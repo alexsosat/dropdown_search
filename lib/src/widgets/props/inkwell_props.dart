@@ -83,6 +83,10 @@ class ClickProps {
   ///    it is a rectangle.
   final bool containedInkWell;
 
+  /// If true, the child click events will be ignored.
+  /// This is useful when you want to prevent the child from being tapped when the parent is tapped.
+  final bool ignoreChildPointerEvents;
+
   /// The shape (e.g., circle, rectangle) to use for the highlight drawn around
   /// this part of the material when pressed, hovered over, or focused.
   ///
@@ -294,6 +298,7 @@ class ClickProps {
     this.splashFactory,
     this.autofocus = false,
     this.canRequestFocus = true,
+    this.ignoreChildPointerEvents = true,
     this.focusColor,
     this.highlightColor,
     this.hoverColor,

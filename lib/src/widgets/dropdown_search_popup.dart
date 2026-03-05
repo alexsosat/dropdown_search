@@ -504,7 +504,10 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
       return CustomInkWell(
         clickProps: widget.props.itemClickProps,
         onTap: isDisabled ? null : () => _handleSelectedItem(item),
-        child: IgnorePointer(child: w),
+        child: IgnorePointer(
+          ignoring: widget.props.itemClickProps.ignoreChildPointerEvents,
+          child: w,
+        ),
       );
     } else {
       return ListTile(
