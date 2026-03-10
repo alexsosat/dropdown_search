@@ -7,7 +7,7 @@ class IconButtonProps {
   final EdgeInsetsGeometry padding;
   final AlignmentGeometry alignment;
   final double? splashRadius;
-  final Widget? icon;
+  final Widget icon;
   final Color? focusColor;
   final Color? hoverColor;
   final Color? color;
@@ -24,10 +24,9 @@ class IconButtonProps {
   final ButtonStyle? style;
   final bool? isSelected;
   final Widget? selectedIcon;
-  final ValueChanged<bool>? onHover;
 
   const IconButtonProps({
-    this.icon,
+    required this.icon,
     this.isVisible = false,
     this.iconSize = 24.0,
     this.visualDensity,
@@ -49,6 +48,5 @@ class IconButtonProps {
     this.style,
     this.isSelected,
     this.selectedIcon,
-    this.onHover,
   }) : assert(splashRadius == null || splashRadius > 0);
 }

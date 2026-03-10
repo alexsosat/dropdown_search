@@ -1,7 +1,5 @@
-import 'package:dropdown_search/src/widgets/props/inkwell_props.dart';
-import 'package:dropdown_search/src/utils.dart';
+import 'package:dropdown_search/dropdown_search.dart';
 import 'package:dropdown_search/src/widgets/custom_inkwell.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 typedef WidgetCheckBox = Widget Function(BuildContext context, bool isChecked);
@@ -12,10 +10,9 @@ class CheckBoxWidget extends StatefulWidget {
   final WidgetCheckBox? checkBox;
   final bool isChecked;
   final bool isDisabled;
-  final ValueChanged<bool?>? onSelected;
+  final ValueChanged<bool?>? onChanged;
   final bool interceptCallBacks;
   final TextDirection textDirection;
-  final UiToApply uiToApply;
 
   CheckBoxWidget({
     super.key,
@@ -26,8 +23,7 @@ class CheckBoxWidget extends StatefulWidget {
     this.checkBox,
     this.interceptCallBacks = false,
     this.textDirection = TextDirection.ltr,
-    this.uiToApply = UiToApply.material,
-    required this.onSelected,
+    required this.onChanged,
   });
 
   @override
@@ -66,13 +62,8 @@ class _CheckBoxWidgetState extends State<CheckBoxWidget> {
                   : SizedBox.shrink(),
               widget.checkBox != null
                   ? widget.checkBox!(context, v == true)
-                  : widget.uiToApply == UiToApply.cupertino
-                      ? CupertinoCheckbox(
-                          value: v,
-                          onChanged: widget.isDisabled ? null : (b) {})
-                      : Checkbox(
-                          value: v,
-                          onChanged: widget.isDisabled ? null : (b) {}),
+                  : Checkbox(
+                      value: v, onChanged: widget.isDisabled ? null : (b) {}),
             ],
           );
 
@@ -85,7 +76,7 @@ class _CheckBoxWidgetState extends State<CheckBoxWidget> {
                   ? null
                   : () {
                       isCheckedNotifier.value = !v;
-                      if (widget.onSelected != null) widget.onSelected!(v);
+                      if (widget.onChanged != null) widget.onChanged!(v);
                     },
               child: IgnorePointer(child: ExcludeFocus(child: w)),
             );

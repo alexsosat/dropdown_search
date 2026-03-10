@@ -63,8 +63,6 @@ class ScrollProps {
   /// {@macro flutter.widgets.scroll_view.keyboardDismissBehavior}
   final ScrollViewKeyboardDismissBehavior keyboardDismissBehavior;
 
-  final String? restorationId;
-
   const ScrollProps({
     this.scrollDirection = Axis.vertical,
     this.reverse = false,
@@ -76,6 +74,5 @@ class ScrollProps {
     this.clipBehavior = Clip.hardEdge,
     this.hitTestBehavior = HitTestBehavior.opaque,
     this.keyboardDismissBehavior = ScrollViewKeyboardDismissBehavior.manual,
-    this.restorationId,
   });
 }

@@ -1,27 +1,26 @@
+import 'package:dropdown_search/dropdown_search.dart';
 import 'package:flutter/material.dart';
-
-import 'props/icon_button_props.dart';
 
 class CustomIconButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final IconButtonProps props;
-  final Widget icon;
+  final Widget? icon;
 
   const CustomIconButton({
     super.key,
     required this.props,
-    required this.icon,
+    this.icon,
     this.onPressed,
   });
 
   @override
   Widget build(BuildContext context) {
     return IconButton(
-      icon: icon,
-      onPressed: onPressed,
       style: props.style,
       isSelected: props.isSelected,
       selectedIcon: props.selectedIcon,
+      onPressed: onPressed,
+      icon: icon ?? props.icon,
       constraints: props.constraints,
       hoverColor: props.hoverColor,
       highlightColor: props.highlightColor,
@@ -39,7 +38,6 @@ class CustomIconButton extends StatelessWidget {
       mouseCursor: props.mouseCursor,
       tooltip: props.tooltip,
       visualDensity: props.visualDensity,
-      onHover: props.onHover,
     );
   }
 }

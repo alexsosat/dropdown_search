@@ -1,18 +1,14 @@
 import 'package:flutter/material.dart';
 
 typedef InfiniteScrollBuilder = Widget Function(BuildContext, int loadedItems);
-typedef LoadingMoreErrorBuilder = Widget Function(BuildContext context,
-    String searchEntry, dynamic exception, LoadProps loadProps);
 
 class InfiniteScrollProps {
   final LoadProps loadProps;
   final InfiniteScrollBuilder? loadingMoreBuilder;
-  final LoadingMoreErrorBuilder? errorBuilder;
 
   const InfiniteScrollProps({
     this.loadingMoreBuilder,
     this.loadProps = const LoadProps(),
-    this.errorBuilder,
   });
 }
 
