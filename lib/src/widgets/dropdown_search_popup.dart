@@ -43,6 +43,7 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
   final List<T> _currentShowedItems = [];
   late TextEditingController searchBoxController;
   late bool isInfiniteScrollEnded;
+  late List<T> suggestedItems;
 
   List<T> get _selectedItems => _selectedItemsNotifier.value;
   Timer? _debounce;
@@ -647,8 +648,9 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
           stream: _itemsStream.stream,
           builder: (context, snapshot) {
             if (snapshot.hasData) {
-              return _buildSuggestedItems(widget.popupProps.suggestedItemProps
-                  .suggestedItems!(snapshot.data!));
+              suggestedItems = widget.popupProps.suggestedItemProps
+                  .suggestedItems!(snapshot.data!);
+              return _buildSuggestedItems(suggestedItems);
             } else {
               return SizedBox.shrink();
             }
@@ -664,6 +666,7 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 8),
       child: LayoutBuilder(builder: (context, constraints) {
+        // TODO: Make an animated list of suggested items
         return CustomSingleScrollView(
           scrollProps: widget.popupProps.suggestedItemProps.scrollProps,
           child: ConstrainedBox(
@@ -793,6 +796,16 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
   List<T> get getSelectedItem => List.from(_selectedItems);
 
   List<T> get getLoadedItems => List.from(_currentShowedItems);
+
+  void addSuggestedItem(T item) {
+    suggestedItems.add(item);
+    setState(() {});
+  }
+
+  void removeSuggestedItem(T item) {
+    suggestedItems.remove(item);
+    setState(() {});
+  }
 
   bool _listEquals(List<T>? a, List<T>? b) {
     if (a == null) {

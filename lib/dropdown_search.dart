@@ -869,5 +869,17 @@ class DropdownSearchState<T> extends State<DropdownSearch<T>> {
   List<T> get popupGetItems =>
       _popupStateKey.currentState?.getLoadedItems ?? [];
 
+  ///add a suggested item to the popup
+  void popupAddSuggestedItem(T item) =>
+      _popupStateKey.currentState?.addSuggestedItem(item);
+
+  ///remove a suggested item from the popup
+  void popupRemoveSuggestedItem(T item) =>
+      _popupStateKey.currentState?.removeSuggestedItem(item);
+
+  ///returns suggested items
+  List<T> get popupGetSuggestedItems =>
+      _popupStateKey.currentState?.suggestedItems ?? [];
+
   void updatePopupState() => _popupStateKey.currentState?.setState(() {});
 }
