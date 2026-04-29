@@ -311,7 +311,8 @@ class _DialogExamplesPageState extends State<DialogExamplesPage> {
                 popupProps: PopupProps.dialog(
                   showSelectedItems: true,
                   interceptCallBacks: true, //important line
-                  itemBuilder: (ctx, item, isDisabled, isSelected) {
+                  itemBuilder:
+                      (ctx, item, isDisabled, isSelected, isSuggested) {
                     return ListTile(
                       selected: isSelected,
                       title: Text(item.level1),
@@ -504,8 +505,8 @@ Widget customDropDownExampleMultiSelection(
   );
 }
 
-Widget userModelPopupItem(
-    BuildContext context, UserModel item, bool isDisabled, bool isSelected) {
+Widget userModelPopupItem(BuildContext context, UserModel item, bool isDisabled,
+    bool isSelected, bool isSuggested) {
   return Container(
     margin: EdgeInsets.symmetric(horizontal: 8),
     decoration: !isSelected
@@ -519,6 +520,7 @@ Widget userModelPopupItem(
       selected: isSelected,
       title: Text(item.name),
       subtitle: Text(item.createdAt.toString()),
+      trailing: isSelected ? Icon(Icons.check_box_outlined) : null,
       leading: CircleAvatar(child: Text(item.name[0])),
     ),
   );

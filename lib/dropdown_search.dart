@@ -43,7 +43,11 @@ typedef DropdownSearchBuilder<T> = Widget Function(
 typedef DropdownSearchBuilderMultiSelection<T> = Widget Function(
     BuildContext context, List<T> selectedItems);
 typedef DropdownSearchPopupItemBuilder<T> = Widget Function(
-    BuildContext context, T item, bool isDisabled, bool isSelected);
+    BuildContext context,
+    T item,
+    bool isDisabled,
+    bool isSelected,
+    bool isSuggested);
 typedef DropdownSearchPopupItemEnabled<T> = bool Function(T item);
 typedef ErrorBuilder<T> = Widget Function(
     BuildContext context, String searchEntry, dynamic exception);

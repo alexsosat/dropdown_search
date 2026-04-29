@@ -34,6 +34,14 @@ class _BottomSheetExamplesPageState extends State<BottomSheetExamplesPage> {
     MultiLevelString(level1: "6"),
   ];
 
+  late GlobalKey<DropdownSearchState<UserModel>> _dropdownSearchKey;
+
+  @override
+  void initState() {
+    super.initState();
+    _dropdownSearchKey = GlobalKey<DropdownSearchState<UserModel>>();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -113,12 +121,16 @@ class _BottomSheetExamplesPageState extends State<BottomSheetExamplesPage> {
                 children: [
                   Expanded(
                     child: DropdownSearch<UserModel>(
+                      key: _dropdownSearchKey,
                       items: (filter, t) => getData(filter),
                       compareFn: (i, s) => i.isEqual(s),
+                      clickProps: ClickProps(
+                        ignorePointers: false,
+                      ),
                       popupProps: PopupPropsMultiSelection.bottomSheet(
                         showSelectedItems: true,
                         showSearchBox: true,
-                        itemBuilder: userModelPopupItem,
+                        itemBuilder: userModelBottomsheetPopupItem,
                         suggestedItemProps: SuggestedItemProps(
                           showSuggestedItems: true,
                           suggestedItems: (us) {
@@ -135,9 +147,12 @@ class _BottomSheetExamplesPageState extends State<BottomSheetExamplesPage> {
                     child: DropdownSearch<UserModel>.multiSelection(
                       items: (filter, s) => getData(filter),
                       compareFn: (i, s) => i.isEqual(s),
+                      clickProps: ClickProps(
+                        ignorePointers: false,
+                      ),
                       popupProps: PopupPropsMultiSelection.bottomSheet(
                         showSearchBox: true,
-                        itemBuilder: userModelPopupItem,
+                        itemBuilder: userModelBottomsheetPopupItem,
                         suggestedItemProps: SuggestedItemProps(
                           showSuggestedItems: true,
                           suggestedItems: (us) {
@@ -249,7 +264,7 @@ class _BottomSheetExamplesPageState extends State<BottomSheetExamplesPage> {
                           clearButtonProps: ClearButtonProps(isVisible: true)),
                       popupProps: PopupPropsMultiSelection.bottomSheet(
                         showSelectedItems: true,
-                        itemBuilder: userModelPopupItem,
+                        itemBuilder: userModelBottomsheetPopupItem,
                         showSearchBox: true,
                         searchFieldProps: TextFieldProps(
                           controller: _userEditTextController,
@@ -280,7 +295,7 @@ class _BottomSheetExamplesPageState extends State<BottomSheetExamplesPage> {
                       items: (filter, t) => getData(filter),
                       popupProps: PopupPropsMultiSelection.bottomSheet(
                         showSelectedItems: true,
-                        itemBuilder: userModelPopupItem,
+                        itemBuilder: userModelBottomsheetPopupItem,
                         showSearchBox: true,
                       ),
                       compareFn: (item, sItem) => item.id == sItem.id,
@@ -308,7 +323,8 @@ class _BottomSheetExamplesPageState extends State<BottomSheetExamplesPage> {
                 popupProps: PopupProps.bottomSheet(
                   showSelectedItems: true,
                   interceptCallBacks: true, //important line
-                  itemBuilder: (ctx, item, isDisabled, isSelected) {
+                  itemBuilder:
+                      (ctx, item, isDisabled, isSelected, isSuggested) {
                     return ListTile(
                       selected: isSelected,
                       title: Text(item.level1),
@@ -363,6 +379,35 @@ class _BottomSheetExamplesPageState extends State<BottomSheetExamplesPage> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget userModelBottomsheetPopupItem(BuildContext context, UserModel item,
+      bool isDisabled, bool isSelected, bool isSuggested) {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 8),
+      decoration: !isSelected
+          ? null
+          : BoxDecoration(
+              border: Border.all(color: Theme.of(context).primaryColor),
+              borderRadius: BorderRadius.circular(5),
+              color: Colors.white,
+            ),
+      child: ListTile(
+        selected: isSelected,
+        title: Text(item.name),
+        subtitle: Text(item.createdAt.toString()),
+        trailing: isSelected
+            ? Icon(Icons.check_box_outlined)
+            : ElevatedButton(
+                onPressed: () {
+                  print("onPressed: ${item.name}");
+                  _dropdownSearchKey.currentState?.popupAddSuggestedItem(item);
+                },
+                child: Icon(Icons.star),
+              ),
+        leading: CircleAvatar(child: Text(item.name[0])),
       ),
     );
   }

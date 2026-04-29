@@ -309,7 +309,8 @@ class _ModalsExamplesPageState extends State<ModalsExamplesPage> {
                 popupProps: PopupProps.modalBottomSheet(
                   showSelectedItems: true,
                   interceptCallBacks: true, //important line
-                  itemBuilder: (ctx, item, isDisabled, isSelected) {
+                  itemBuilder:
+                      (ctx, item, isDisabled, isSelected, isSuggested) {
                     return ListTile(
                       selected: isSelected,
                       title: Text(item.level1),

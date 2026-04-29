@@ -43,7 +43,7 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
   final List<T> _currentShowedItems = [];
   late TextEditingController searchBoxController;
   late bool isInfiniteScrollEnded;
-  late List<T> suggestedItems;
+  final List<T> suggestedItems = [];
 
   List<T> get _selectedItems => _selectedItemsNotifier.value;
   Timer? _debounce;
@@ -78,6 +78,13 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
       Duration.zero,
       () => _manageLoadItems(searchBoxController.text, isFirstLoad: true),
     );
+
+    _itemsStream.stream.listen((data) {
+      if (suggestedItems.isEmpty) {
+        suggestedItems
+            .addAll(widget.popupProps.suggestedItemProps.suggestedItems!(data));
+      }
+    });
   }
 
   @override
@@ -453,6 +460,7 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
         item,
         _isDisabled(item),
         !widget.popupProps.showSelectedItems ? false : _isSelectedItem(item),
+        suggestedItems.contains(item),
       );
 
       if (widget.popupProps.interceptCallBacks) return w;
@@ -461,7 +469,8 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
         clickProps: widget.popupProps.itemClickProps,
         onTap: _isDisabled(item) ? null : () => _handleSelectedItem(item),
         child: IgnorePointer(
-          ignoring: widget.popupProps.itemClickProps.ignorePointers,
+          //ignoring: widget.popupProps.itemClickProps.ignorePointers,
+          ignoring: false,
           child: w,
         ),
       );
@@ -482,8 +491,8 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
       return CheckBoxWidget(
         clickProps: widget.popupProps.itemClickProps,
         checkBox: (cxt, checked) {
-          return widget.popupProps.checkBoxBuilder!(
-              cxt, item, _isDisabled(item), checked);
+          return widget.popupProps.checkBoxBuilder!(cxt, item,
+              _isDisabled(item), checked, suggestedItems.contains(item));
         },
         interceptCallBacks: widget.popupProps.interceptCallBacks,
         textDirection: widget.popupProps.textDirection,
@@ -648,8 +657,6 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
           stream: _itemsStream.stream,
           builder: (context, snapshot) {
             if (snapshot.hasData) {
-              suggestedItems = widget.popupProps.suggestedItemProps
-                  .suggestedItems!(snapshot.data!);
               return _buildSuggestedItems(suggestedItems);
             } else {
               return SizedBox.shrink();
