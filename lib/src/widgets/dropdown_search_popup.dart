@@ -469,8 +469,7 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
         clickProps: widget.popupProps.itemClickProps,
         onTap: _isDisabled(item) ? null : () => _handleSelectedItem(item),
         child: IgnorePointer(
-          //ignoring: widget.popupProps.itemClickProps.ignorePointers,
-          ignoring: false,
+          ignoring: widget.popupProps.itemClickProps.ignorePointers,
           child: w,
         ),
       );
