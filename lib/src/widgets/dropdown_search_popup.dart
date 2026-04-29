@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:nativewrappers/_internal/vm/lib/ffi_allocation_patch.dart';
 
 import 'package:dropdown_search/src/widgets/custom_inkwell.dart';
 import 'package:flutter/foundation.dart';
@@ -81,8 +82,13 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
 
     _itemsStream.stream.listen((data) {
       if (suggestedItems.isEmpty) {
-        suggestedItems
-            .addAll(widget.popupProps.suggestedItemProps.suggestedItems!(data));
+        final widgetSuggestedItems =
+            widget.popupProps.suggestedItemProps.suggestedItems?.call(data);
+
+        if (widgetSuggestedItems != null &&
+            widget.popupProps.suggestedItemProps.showSuggestedItems) {
+          suggestedItems.addAll(widgetSuggestedItems);
+        }
       }
     });
   }
