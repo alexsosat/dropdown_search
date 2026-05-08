@@ -34,6 +34,22 @@ class _SuggestedExampleState extends State<SuggestedExample> {
                 ),
               ),
             ),
+            DropdownSearch<String>(
+              items: (filter, t) => ['Item 1', 'Item 2', 'Item 3'],
+              popupProps: PopupProps.modalBottomSheet(
+                itemProps: ItemProps(
+                  title: (item) => Text(item + "A"),
+                  leading: (item) => Icon(Icons.wordpress),
+                  subtitle: (item) => Text(item + "B"),
+                ),
+                pinnedItemsProps: PinnedItemsProps(
+                  pinnedItemsTag: 'example_pinned_items_2',
+                  pinnedItemsEntityTransformer: (item) => item,
+                  pinnedItemsStringTransformer: (item) => item,
+                  showPinnedItems: true,
+                ),
+              ),
+            ),
           ],
         ),
       );

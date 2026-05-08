@@ -1,4 +1,3 @@
-import 'package:dropdown_search/src/properties/pinned_items_props.dart';
 import 'package:flutter/material.dart';
 
 import '../../dropdown_search.dart';

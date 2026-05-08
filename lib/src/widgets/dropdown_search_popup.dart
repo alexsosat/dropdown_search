@@ -517,10 +517,10 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
             ? widget.popupProps.itemProps!.title(item)
             : Text(_selectedItemAsString(item)),
         subtitle: widget.popupProps.itemProps?.subtitle != null
-            ? widget.popupProps.itemProps!.subtitle(item)
+            ? widget.popupProps.itemProps!.subtitle!(item)
             : null,
         leading: widget.popupProps.itemProps?.leading != null
-            ? widget.popupProps.itemProps!.leading(item)
+            ? widget.popupProps.itemProps!.leading!(item)
             : null,
         trailing: widget.popupProps.pinnedItemsProps?.showPinnedItems == true
             ? _isSelectedItem(item)

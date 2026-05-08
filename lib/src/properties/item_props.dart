@@ -6,14 +6,14 @@ class ItemProps<T> {
   final Widget Function(T item) title;
 
   /// Secondary line below [title].
-  final Widget Function(T item) subtitle;
+  final Widget Function(T item)? subtitle;
 
   /// Widget shown before [title] / [subtitle] (e.g. icon or avatar).
-  final Widget Function(T item) leading;
+  final Widget Function(T item)? leading;
 
   const ItemProps({
     required this.title,
-    required this.subtitle,
-    required this.leading,
+    this.leading,
+    this.subtitle,
   });
 }

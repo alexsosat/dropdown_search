@@ -615,7 +615,9 @@ class DropdownSearchState<T> extends State<DropdownSearch<T>> {
       sheetAnimationStyle:
           widget.popupProps.bottomSheetProps.sheetAnimationStyle,
       enableDrag: widget.popupProps.bottomSheetProps.enableDrag,
-      backgroundColor: widget.popupProps.bottomSheetProps.backgroundColor,
+      backgroundColor: widget.popupProps.bottomSheetProps.backgroundColor ??
+          Theme.of(context).bottomSheetTheme.backgroundColor ??
+          Theme.of(context).scaffoldBackgroundColor,
       clipBehavior: widget.popupProps.bottomSheetProps.clipBehavior,
       elevation: widget.popupProps.bottomSheetProps.elevation,
       shape: widget.popupProps.bottomSheetProps.shape,
@@ -643,7 +645,7 @@ class DropdownSearchState<T> extends State<DropdownSearch<T>> {
             widget.popupProps.modalBottomSheetProps.backgroundColor ??
                 sheetTheme.modalBackgroundColor ??
                 sheetTheme.backgroundColor ??
-                Colors.white,
+                Theme.of(context).scaffoldBackgroundColor,
         isDismissible:
             widget.popupProps.modalBottomSheetProps.barrierDismissible,
         isScrollControlled:
