@@ -398,15 +398,6 @@ class _BottomSheetExamplesPageState extends State<BottomSheetExamplesPage> {
         selected: isSelected,
         title: Text(item.name),
         subtitle: Text(item.createdAt.toString()),
-        trailing: isSelected
-            ? Icon(Icons.check_box_outlined)
-            : ElevatedButton(
-                onPressed: () {
-                  print("onPressed: ${item.name}");
-                  _dropdownSearchKey.currentState?.popupAddSuggestedItem(item);
-                },
-                child: Icon(Icons.star),
-              ),
         leading: CircleAvatar(child: Text(item.name[0])),
       ),
     );

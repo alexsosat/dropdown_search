@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dropdown_search/src/data/data_sources/pinned_items_database.dart';
 import 'package:dropdown_search/src/widgets/custom_inkwell.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -44,6 +45,9 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
   late TextEditingController searchBoxController;
   late bool isInfiniteScrollEnded;
   final List<T> suggestedItems = [];
+  final List<T> pinnedItems = [];
+
+  final PinnedItemsDatabase _pinnedItemsDatabase = PinnedItemsDatabase();
 
   List<T> get _selectedItems => _selectedItemsNotifier.value;
   Timer? _debounce;
@@ -79,14 +83,41 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
       () => _manageLoadItems(searchBoxController.text, isFirstLoad: true),
     );
 
-    _itemsStream.stream.listen((data) {
-      if (suggestedItems.isEmpty) {
+    _itemsStream.stream.listen((data) async {
+      if (widget.popupProps.suggestedItemProps.showSuggestedItems &&
+          suggestedItems.isEmpty) {
         final widgetSuggestedItems =
             widget.popupProps.suggestedItemProps.suggestedItems?.call(data);
 
-        if (widgetSuggestedItems != null &&
-            widget.popupProps.suggestedItemProps.showSuggestedItems) {
+        if (widgetSuggestedItems != null) {
           suggestedItems.addAll(widgetSuggestedItems);
+        }
+      }
+
+      if (widget.popupProps.pinnedItemsProps != null &&
+          widget.popupProps.pinnedItemsProps!.showPinnedItems &&
+          pinnedItems.isEmpty) {
+        await PinnedItemsDatabase.init();
+
+        final pinProps = widget.popupProps.pinnedItemsProps!;
+
+        final databasePinnedItems = _pinnedItemsDatabase.get(
+          pinProps.pinnedItemsTag,
+        );
+
+        final transformedPinnedItems = databasePinnedItems.map((item) {
+          return pinProps.pinnedItemsEntityTransformer.call(item);
+        }).toList();
+
+        for (var item in transformedPinnedItems) {
+          if (data.contains(item)) {
+            pinnedItems.add(item);
+          } else {
+            _pinnedItemsDatabase.deleteItem(
+              tag: pinProps.pinnedItemsTag,
+              item: pinProps.pinnedItemsStringTransformer(item),
+            );
+          }
         }
       }
     });
@@ -140,6 +171,7 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
               children: <Widget>[
                 _searchField(),
                 _suggestedItemsWidget(),
+                _pinnedItemsWidget(),
                 Flexible(
                   fit: widget.popupProps.fit,
                   child: Stack(
@@ -465,7 +497,7 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
         item,
         _isDisabled(item),
         !widget.popupProps.showSelectedItems ? false : _isSelectedItem(item),
-        suggestedItems.contains(item),
+        pinnedItems.contains(item),
       );
 
       if (widget.popupProps.interceptCallBacks) return w;
@@ -481,7 +513,26 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
     } else {
       return ListTile(
         enabled: !_isDisabled(item),
-        title: Text(_selectedItemAsString(item)),
+        title: widget.popupProps.itemProps?.title != null
+            ? widget.popupProps.itemProps!.title(item)
+            : Text(_selectedItemAsString(item)),
+        subtitle: widget.popupProps.itemProps?.subtitle != null
+            ? widget.popupProps.itemProps!.subtitle(item)
+            : null,
+        leading: widget.popupProps.itemProps?.leading != null
+            ? widget.popupProps.itemProps!.leading(item)
+            : null,
+        trailing: widget.popupProps.pinnedItemsProps?.showPinnedItems == true
+            ? _isSelectedItem(item)
+                ? IconButton(
+                    onPressed: null,
+                    icon: Icon(
+                      Icons.check_circle,
+                      color: Colors.green,
+                    ),
+                  )
+                : _buildPinnedItemTrailing(item)
+            : null,
         selected: !widget.popupProps.showSelectedItems
             ? false
             : _isSelectedItem(item),
@@ -808,13 +859,23 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
 
   List<T> get getLoadedItems => List.from(_currentShowedItems);
 
-  void addSuggestedItem(T item) {
-    suggestedItems.add(item);
+  void addPinnedItem(T item) {
+    pinnedItems.add(item);
+    _pinnedItemsDatabase.addItem(
+      tag: widget.popupProps.pinnedItemsProps!.pinnedItemsTag,
+      item: widget.popupProps.pinnedItemsProps!
+          .pinnedItemsStringTransformer(item),
+    );
     setState(() {});
   }
 
-  void removeSuggestedItem(T item) {
-    suggestedItems.remove(item);
+  void removePinnedItem(T item) {
+    pinnedItems.remove(item);
+    _pinnedItemsDatabase.deleteItem(
+      tag: widget.popupProps.pinnedItemsProps!.pinnedItemsTag,
+      item: widget.popupProps.pinnedItemsProps!
+          .pinnedItemsStringTransformer(item),
+    );
     setState(() {});
   }
 
@@ -834,5 +895,74 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
       }
     }
     return true;
+  }
+
+  _pinnedItemsWidget() {
+    if (widget.popupProps.pinnedItemsProps != null &&
+        widget.popupProps.pinnedItemsProps!.showPinnedItems) {
+      return StreamBuilder<List<T>>(
+          stream: _itemsStream.stream,
+          builder: (context, snapshot) {
+            if (snapshot.hasData) {
+              return _buildPinnedItems(pinnedItems);
+            } else {
+              return SizedBox.shrink();
+            }
+          });
+    }
+
+    return SizedBox.shrink();
+  }
+
+  Widget _buildPinnedItems(List<T> pinnedItems) {
+    if (pinnedItems.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 8),
+      child: LayoutBuilder(builder: (context, constraints) {
+        // TODO: Make an animated list of suggested items
+        return CustomSingleScrollView(
+          scrollProps: widget.popupProps.pinnedItemsProps!.scrollProps,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minWidth: constraints.maxWidth),
+            child: Row(
+              mainAxisSize: MainAxisSize.max,
+              mainAxisAlignment:
+                  widget.popupProps.pinnedItemsProps!.pinnedItemsAlignment,
+              children: pinnedItems
+                  .map(
+                    (f) => CustomInkWell(
+                      clickProps:
+                          widget.popupProps.pinnedItemsProps!.itemClickProps,
+                      onTap: () => _handleSelectedItem(f),
+                      child: widget.popupProps.pinnedItemsProps!
+                                  .pinnedItemsBuilder !=
+                              null
+                          ? widget.popupProps.pinnedItemsProps!
+                                  .pinnedItemsBuilder!(
+                              context, f, _isSelectedItem(f))
+                          : _suggestedItemDefaultWidget(f),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
+  _buildPinnedItemTrailing(T item) {
+    if (pinnedItems.contains(item)) {
+      return IconButton(
+        onPressed: () => removePinnedItem(item),
+        icon: Icon(Icons.star),
+      );
+    } else {
+      return IconButton(
+        onPressed: () => addPinnedItem(item),
+        icon: Icon(Icons.star_border),
+      );
+    }
   }
 }

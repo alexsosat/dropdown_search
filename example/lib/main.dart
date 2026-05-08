@@ -30,7 +30,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'dropdownSearch Demo',
       //enable this line if you want test Dark Mode
-      //theme: ThemeData.dark(),
+      theme: ThemeData.dark(),
       home: MyHomePage(),
     );
   }

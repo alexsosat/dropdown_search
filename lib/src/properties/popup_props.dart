@@ -1,3 +1,4 @@
+import 'package:dropdown_search/src/properties/pinned_items_props.dart';
 import 'package:flutter/material.dart';
 
 import '../../dropdown_search.dart';
@@ -59,6 +60,12 @@ class PopupProps<T> {
   ///suggested items props
   final SuggestedItemProps<T> suggestedItemProps;
 
+  /// pinned items props
+  final PinnedItemsProps<T>? pinnedItemsProps;
+
+  /// item props
+  final ItemProps<T>? itemProps;
+
   ///dialog mode props
   final DialogProps dialogProps;
 
@@ -107,6 +114,8 @@ class PopupProps<T> {
     this.scrollbarProps = const ScrollbarProps(),
     this.listViewProps = const ListViewProps(),
     this.suggestedItemProps = const SuggestedItemProps(),
+    this.pinnedItemsProps,
+    this.itemProps,
     this.searchDelay = const Duration(seconds: 1),
     this.onDismissed,
     this.emptyBuilder,
@@ -134,6 +143,8 @@ class PopupProps<T> {
     this.scrollbarProps = const ScrollbarProps(),
     this.listViewProps = const ListViewProps(),
     this.suggestedItemProps = const SuggestedItemProps(),
+    this.pinnedItemsProps,
+    this.itemProps,
     this.searchDelay = const Duration(seconds: 1),
     this.onDismissed,
     this.emptyBuilder,
@@ -164,6 +175,8 @@ class PopupProps<T> {
     this.scrollbarProps = const ScrollbarProps(),
     this.listViewProps = const ListViewProps(),
     this.suggestedItemProps = const SuggestedItemProps(),
+    this.pinnedItemsProps,
+    this.itemProps,
     this.searchDelay = const Duration(seconds: 1),
     this.onDismissed,
     this.emptyBuilder,
@@ -198,6 +211,8 @@ class PopupProps<T> {
     this.scrollbarProps = const ScrollbarProps(),
     this.listViewProps = const ListViewProps(),
     this.suggestedItemProps = const SuggestedItemProps(),
+    this.pinnedItemsProps,
+    this.itemProps,
     this.searchDelay = const Duration(seconds: 1),
     this.onDismissed,
     this.emptyBuilder,
@@ -228,6 +243,8 @@ class PopupProps<T> {
     this.scrollbarProps = const ScrollbarProps(),
     this.listViewProps = const ListViewProps(),
     this.suggestedItemProps = const SuggestedItemProps(),
+    this.pinnedItemsProps,
+    this.itemProps,
     this.searchDelay = const Duration(seconds: 1),
     this.onDismissed,
     this.emptyBuilder,
@@ -276,6 +293,8 @@ class PopupPropsMultiSelection<T> extends PopupProps<T> {
     super.showSearchBox,
     super.searchFieldProps = const TextFieldProps(),
     super.suggestedItemProps = const SuggestedItemProps(),
+    super.pinnedItemsProps,
+    super.itemProps,
     super.modalBottomSheetProps = const ModalBottomSheetProps(),
     super.scrollbarProps = const ScrollbarProps(),
     super.listViewProps = const ListViewProps(),
@@ -308,6 +327,8 @@ class PopupPropsMultiSelection<T> extends PopupProps<T> {
     super.searchFieldProps = const TextFieldProps(),
     super.menuProps = const MenuProps(),
     super.suggestedItemProps = const SuggestedItemProps(),
+    super.pinnedItemsProps,
+    super.itemProps,
     super.scrollbarProps = const ScrollbarProps(),
     super.listViewProps = const ListViewProps(),
     super.searchDelay,
@@ -341,6 +362,8 @@ class PopupPropsMultiSelection<T> extends PopupProps<T> {
     super.scrollbarProps = const ScrollbarProps(),
     super.listViewProps = const ListViewProps(),
     super.suggestedItemProps = const SuggestedItemProps(),
+    super.pinnedItemsProps,
+    super.itemProps,
     super.dialogProps = const DialogProps(),
     super.searchDelay,
     super.onDismissed,
@@ -376,6 +399,8 @@ class PopupPropsMultiSelection<T> extends PopupProps<T> {
     super.searchFieldProps = const TextFieldProps(),
     super.listViewProps = const ListViewProps(),
     super.suggestedItemProps = const SuggestedItemProps(),
+    super.pinnedItemsProps,
+    super.itemProps,
     super.bottomSheetProps = const BottomSheetProps(),
     super.scrollbarProps = const ScrollbarProps(),
     super.searchDelay,
@@ -411,6 +436,8 @@ class PopupPropsMultiSelection<T> extends PopupProps<T> {
     super.showSearchBox,
     super.searchFieldProps = const TextFieldProps(),
     super.suggestedItemProps = const SuggestedItemProps(),
+    super.pinnedItemsProps,
+    super.itemProps,
     super.modalBottomSheetProps = const ModalBottomSheetProps(),
     super.scrollbarProps = const ScrollbarProps(),
     super.listViewProps = const ListViewProps(),
@@ -438,6 +465,8 @@ class PopupPropsMultiSelection<T> extends PopupProps<T> {
           title: popupProps.title,
           fit: popupProps.fit,
           suggestedItemProps: popupProps.suggestedItemProps,
+          pinnedItemsProps: popupProps.pinnedItemsProps,
+          itemProps: popupProps.itemProps,
           disabledItemFn: popupProps.disabledItemFn,
           emptyBuilder: popupProps.emptyBuilder,
           errorBuilder: popupProps.errorBuilder,

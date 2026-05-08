@@ -21,7 +21,9 @@ export 'src/properties/clear_button_props.dart';
 export 'src/properties/dialog_props.dart';
 export 'src/properties/dropdown_props.dart';
 export 'src/properties/suggested_item_props.dart';
+export 'src/properties/pinned_items_props.dart';
 export 'src/properties/icon_button_props.dart';
+export 'src/properties/item_props.dart';
 export 'src/properties/list_view_props.dart';
 export 'src/properties/menu_props.dart';
 export 'src/properties/modal_bottom_sheet_props.dart';
@@ -47,7 +49,7 @@ typedef DropdownSearchPopupItemBuilder<T> = Widget Function(
     T item,
     bool isDisabled,
     bool isSelected,
-    bool isSuggested);
+    bool isPinned);
 typedef DropdownSearchPopupItemEnabled<T> = bool Function(T item);
 typedef ErrorBuilder<T> = Widget Function(
     BuildContext context, String searchEntry, dynamic exception);
@@ -74,6 +76,12 @@ typedef PopupBuilder<T> = Widget Function(
 
 ///[items] are the original item from [items] or/and [items]
 typedef SuggestedItems<T> = List<T> Function(List<T> items);
+
+/// Transformer to parse from a String to a T
+typedef PinnedItemsEntityTransformer<T> = T Function(String item);
+
+/// Transformer to parse from a String to a List of T
+typedef PinnedItemsStringTransformer<T> = String Function(T item);
 
 enum PopupMode { dialog, modalBottomSheet, menu, bottomSheet }
 
@@ -874,12 +882,12 @@ class DropdownSearchState<T> extends State<DropdownSearch<T>> {
       _popupStateKey.currentState?.getLoadedItems ?? [];
 
   ///add a suggested item to the popup
-  void popupAddSuggestedItem(T item) =>
-      _popupStateKey.currentState?.addSuggestedItem(item);
+  void popupAddPinnedItem(T item) =>
+      _popupStateKey.currentState?.addPinnedItem(item);
 
   ///remove a suggested item from the popup
-  void popupRemoveSuggestedItem(T item) =>
-      _popupStateKey.currentState?.removeSuggestedItem(item);
+  void popupRemovePinnedItem(T item) =>
+      _popupStateKey.currentState?.removePinnedItem(item);
 
   ///returns suggested items
   List<T> get popupGetSuggestedItems =>
