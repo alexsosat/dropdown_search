@@ -865,6 +865,12 @@ class DropdownSearchState<T> extends State<DropdownSearch<T>> {
   ///otherwise you can you [_selectSearchMode]
   void openDropDownSearch() => _selectSearchMode();
 
+  /// Opens the dropdown search if no value is selected
+  void maybeOpenDropDownSearch() {
+    if (getSelectedItem == null) return;
+    openDropDownSearch();
+  }
+
   ///return the state of the popup
   DropdownSearchPopupState<T>? get getPopupState => _popupStateKey.currentState;
 
@@ -896,4 +902,32 @@ class DropdownSearchState<T> extends State<DropdownSearch<T>> {
       _popupStateKey.currentState?.suggestedItems ?? [];
 
   void updatePopupState() => _popupStateKey.currentState?.setState(() {});
+
+  /// Retrieves the items programatically
+  ///
+  /// [autoSelectIfOneItem] if true and [items] is only one item, the item will be selected automatically
+  Future<List<T>?> retrieveItems({
+    bool autoSelectIfOneItem = false,
+    String filter = "",
+  }) async {
+    final retrieveItems = await widget.items?.call(
+      filter,
+      widget.popupProps.infiniteScrollProps?.loadProps,
+    );
+
+    if (retrieveItems == null) return null;
+
+    switch (retrieveItems.length) {
+      case 0:
+        return null;
+      case 1:
+        if (autoSelectIfOneItem) {
+          _handleOnChangeSelectedItems([retrieveItems.first]);
+        }
+        return retrieveItems;
+
+      default:
+        return retrieveItems;
+    }
+  }
 }
