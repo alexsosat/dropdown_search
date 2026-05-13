@@ -35,6 +35,9 @@ class ClickProps {
   /// Whether to ignore pointers.
   final bool ignorePointers;
 
+  /// if true, auto select the item if it's the only one
+  final bool autoSelectIfOnlyOne;
+
   /// Called when the user taps down this part of the material.
   final GestureTapDownCallback? onTapDown;
 
@@ -316,6 +319,7 @@ class ClickProps {
   final Duration? hoverDuration;
 
   const ClickProps({
+    this.autoSelectIfOnlyOne = false,
     this.ignorePointers = true,
     this.containedInkWell = true,
     this.highlightShape = BoxShape.rectangle,

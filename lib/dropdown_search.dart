@@ -906,16 +906,25 @@ class DropdownSearchState<T> extends State<DropdownSearch<T>> {
   /// Retrieves the items programatically
   ///
   /// [autoSelectIfOneItem] if true and [items] is only one item, the item will be selected automatically
+  /// [filterDisabledItems] if true and [items] has disabled items, they will be filtered out
   Future<List<T>?> retrieveItems({
     bool autoSelectIfOneItem = false,
+    bool filterDisabledItems = false,
     String filter = "",
   }) async {
-    final retrieveItems = await widget.items?.call(
+    var retrieveItems = await widget.items?.call(
       filter,
       widget.popupProps.infiniteScrollProps?.loadProps,
     );
 
     if (retrieveItems == null) return null;
+
+    final popUpItemProps = widget.popupProps.disabledItemFn;
+
+    if (filterDisabledItems && popUpItemProps != null) {
+      retrieveItems =
+          retrieveItems.where((item) => !popUpItemProps(item)).toList();
+    }
 
     switch (retrieveItems.length) {
       case 0:

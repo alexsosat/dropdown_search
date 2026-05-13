@@ -35,8 +35,16 @@ class _SuggestedExampleState extends State<SuggestedExample> {
               ),
             ),
             DropdownSearch<String>(
-              items: (filter, t) => ['Item 1', 'Item 2', 'Item 3'],
+              items: (filter, t) async {
+                await Future.delayed(Duration(seconds: 2));
+
+                return ['Item 1'];
+              },
               popupProps: PopupProps.modalBottomSheet(
+                disabledItemFn: (item) => item == 'Item 1',
+                itemClickProps: ClickProps(
+                  autoSelectIfOnlyOne: true,
+                ),
                 itemProps: ItemProps(
                   title: (item) => Text(item + "A"),
                   leading: (item) => Icon(Icons.wordpress),

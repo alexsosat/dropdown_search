@@ -106,7 +106,8 @@ class PinnedItemsDatabase {
     await prefs.remove(_tagsKey);
   }
 
-  Future<void> _addTagToIndex(SharedPreferencesWithCache prefs, String tag) async {
+  Future<void> _addTagToIndex(
+      SharedPreferencesWithCache prefs, String tag) async {
     final tags = (prefs.getStringList(_tagsKey) ?? const <String>[]).toSet();
     if (tags.add(tag)) {
       await prefs.setStringList(_tagsKey, tags.toList()..sort());

@@ -109,6 +109,13 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
           return pinProps.pinnedItemsEntityTransformer.call(item);
         }).toList();
 
+        // Filter disabled items
+        if (widget.popupProps.disabledItemFn != null) {
+          transformedPinnedItems.removeWhere(
+            (item) => widget.popupProps.disabledItemFn!(item),
+          );
+        }
+
         for (var item in transformedPinnedItems) {
           if (data.contains(item)) {
             pinnedItems.add(item);
@@ -483,6 +490,16 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
     if (widget.popupProps.onItemsLoaded != null) {
       widget.popupProps.onItemsLoaded!(data);
     }
+
+    // TODO: Add a snackbar to show that the item was auto-selected
+    if (widget.popupProps.itemClickProps.autoSelectIfOnlyOne &&
+        data.length == 1) {
+      if (!_isDisabled(data.first) &&
+          !_isSelectedItem(data.first) &&
+          !widget.isMultiSelectionMode) {
+        _handleSelectedItem(data.first);
+      }
+    }
   }
 
   void _setErrorToStream(Object error, [StackTrace? stackTrace]) {
@@ -692,7 +709,7 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
                 magnifierConfiguration:
                     widget.popupProps.searchFieldProps.magnifierConfiguration,
                 onTapOutside: widget.popupProps.searchFieldProps.onTapOutside,
-                scribbleEnabled:
+                stylusHandwritingEnabled:
                     widget.popupProps.searchFieldProps.scribbleEnabled,
                 undoController:
                     widget.popupProps.searchFieldProps.undoController,
@@ -728,7 +745,6 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 8),
       child: LayoutBuilder(builder: (context, constraints) {
-        // TODO: Make an animated list of suggested items
         return CustomSingleScrollView(
           scrollProps: widget.popupProps.suggestedItemProps.scrollProps,
           child: ConstrainedBox(
