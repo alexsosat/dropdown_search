@@ -673,8 +673,13 @@ class DropdownSearchState<T> extends State<DropdownSearch<T>> {
   Future _openMenu() {
     // Here we get the render object of our physical button, later to get its size & position
     final dropdownObject = context.findRenderObject() as RenderBox;
-    // Get the render object of the overlay used in `Navigator` / `MaterialApp`, i.e. screen size reference
-    var overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final overlayState = Overlay.maybeOf(context) ?? Navigator.of(context).overlay;
+    if (overlayState == null) {
+      throw FlutterError(
+        'No Overlay widget found. To show a dropdown menu, there must be an Overlay widget in the widget tree.',
+      );
+    }
+    final RenderBox overlay = overlayState.context.findRenderObject() as RenderBox;
 
     return showCustomMenu<T>(
       menuModeProps: widget.popupProps.menuProps,

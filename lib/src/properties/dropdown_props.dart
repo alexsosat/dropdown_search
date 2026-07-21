@@ -38,6 +38,9 @@ class ClickProps {
   /// if true, auto select the item if it's the only one
   final bool autoSelectIfOnlyOne;
 
+  /// If true, the item will be auto selected when a search returns only one item.
+  final bool autoSelectIfOnlyOneOnSearch;
+
   /// Called when the user taps down this part of the material.
   final GestureTapDownCallback? onTapDown;
 
@@ -320,6 +323,7 @@ class ClickProps {
 
   const ClickProps({
     this.autoSelectIfOnlyOne = false,
+    this.autoSelectIfOnlyOneOnSearch = false,
     this.ignorePointers = true,
     this.containedInkWell = true,
     this.highlightShape = BoxShape.rectangle,

@@ -433,17 +433,18 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
         !widget.popupProps.disableFilter &&
         widget.popupProps.cacheItems &&
         isInfiniteScrollEnded) {
-      _addDataToStream(_applyFilter(filter));
+      _addDataToStream(_applyFilter(filter), isFirstLoad: isFirstLoad);
       return;
     }
 
-    return _manageLoadMoreItems(filter);
+    return _manageLoadMoreItems(filter, isFirstLoad: isFirstLoad);
   }
 
   Future<void> _manageLoadMoreItems(
     String filter, {
     int? skip,
     bool showLoading = true,
+    bool isFirstLoad = false,
   }) async {
     if (widget.items == null) return;
 
@@ -466,9 +467,9 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
 
       //manage data filtering
       if (widget.popupProps.disableFilter) {
-        _addDataToStream(_cachedItems);
+        _addDataToStream(_cachedItems, isFirstLoad: isFirstLoad);
       } else {
-        _addDataToStream(_applyFilter(filter));
+        _addDataToStream(_applyFilter(filter), isFirstLoad: isFirstLoad);
       }
     } catch (e) {
       _setErrorToStream(e);
@@ -479,7 +480,7 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
     }
   }
 
-  void _addDataToStream(List<T> data) {
+  void _addDataToStream(List<T> data, {bool isFirstLoad = false}) {
     if (_itemsStream.isClosed) return;
     _itemsStream.add(data);
 
@@ -492,7 +493,9 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
     }
 
     // TODO: Add a snackbar to show that the item was auto-selected
-    if (widget.popupProps.itemClickProps.autoSelectIfOnlyOne &&
+    if ((isFirstLoad ||
+            widget.popupProps.itemClickProps.autoSelectIfOnlyOneOnSearch) &&
+        widget.popupProps.itemClickProps.autoSelectIfOnlyOne &&
         data.length == 1) {
       if (!_isDisabled(data.first) &&
           !_isSelectedItem(data.first) &&

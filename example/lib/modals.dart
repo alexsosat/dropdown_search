@@ -115,8 +115,12 @@ class _ModalsExamplesPageState extends State<ModalsExamplesPage> {
                     child: DropdownSearch<UserModel>(
                       items: (filter, t) => getData(filter),
                       compareFn: (i, s) => i.isEqual(s),
+                      clickProps: ClickProps(
+                        autoSelectIfOnlyOne: true,
+                      ),
                       popupProps: PopupPropsMultiSelection.modalBottomSheet(
                         showSelectedItems: true,
+                        cacheItems: true,
                         showSearchBox: true,
                         itemBuilder: userModelPopupItem,
                         suggestedItemProps: SuggestedItemProps(

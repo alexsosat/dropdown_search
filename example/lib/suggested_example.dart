@@ -25,7 +25,18 @@ class _SuggestedExampleState extends State<SuggestedExample> {
             DropdownSearch<int>(
               key: _dropdownSearchKey,
               items: (filter, t) => [1, 2, 3, 4, 5, 6, 7],
+              clickProps: ClickProps(
+                autoSelectIfOnlyOne: true,
+                autoSelectIfOnlyOneOnSearch: true,
+              ),
               popupProps: PopupProps.modalBottomSheet(
+                showSearchBox: true,
+                cacheItems: true,
+                searchDelay: const Duration(seconds: 0),
+                itemClickProps: ClickProps(
+                  autoSelectIfOnlyOne: true,
+                  autoSelectIfOnlyOneOnSearch: true,
+                ),
                 pinnedItemsProps: PinnedItemsProps(
                   pinnedItemsTag: 'example_pinned_items',
                   pinnedItemsEntityTransformer: (item) => int.parse(item),
