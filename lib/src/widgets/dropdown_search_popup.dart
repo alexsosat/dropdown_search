@@ -6,11 +6,16 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../dropdown_search.dart';
+import '../items_loader.dart';
+import '../dropdown_source.dart';
 import 'checkbox_widget.dart';
-import 'custom_scroll_view.dart';
 
 class DropdownSearchPopup<T> extends StatefulWidget {
   final ValueChanged<List<T>>? onChanged;
+
+  /// Reports enabled user item taps, excluding automatic/programmatic changes.
+  /// Gestures owned by the caller through interceptCallBacks are not observed.
+  final ValueChanged<T>? onItemTapped;
   final DropdownSearchOnFind<T>? items;
   final DropdownSearchItemAsString<T>? itemAsString;
   final DropdownSearchFilterFn<T>? filterFn;
@@ -25,6 +30,7 @@ class DropdownSearchPopup<T> extends StatefulWidget {
     this.defaultSelectedItems = const [],
     this.isMultiSelectionMode = false,
     this.onChanged,
+    this.onItemTapped,
     this.items,
     this.itemAsString,
     this.filterFn,
@@ -44,10 +50,20 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
   final List<T> _currentShowedItems = [];
   late TextEditingController searchBoxController;
   late bool isInfiniteScrollEnded;
-  final List<T> suggestedItems = [];
+  ItemsLoaderScope<T>? _ownerScope;
+  ValueListenable<List<T>>? _ownerSelected;
+  List<T> get suggestedItems => _ownerScope?.suggestedItems?.value ?? <T>[];
   final List<T> pinnedItems = [];
 
   final PinnedItemsDatabase _pinnedItemsDatabase = PinnedItemsDatabase();
+  Future<void>? _pinnedItemsLoadFuture;
+  ItemsLoader<T>? _itemsLoader;
+  ItemsLoadMode? _itemsLoadMode;
+  int _sharedRevision = -1;
+  String? _sharedFilter;
+  Object? _sharedError;
+  bool _firstSharedPresentation = true;
+  int _loadGeneration = 0;
 
   List<T> get _selectedItems => _selectedItemsNotifier.value;
   Timer? _debounce;
@@ -82,52 +98,138 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
       Duration.zero,
       () => _manageLoadItems(searchBoxController.text, isFirstLoad: true),
     );
+  }
 
-    _itemsStream.stream.listen((data) async {
-      if (widget.popupProps.suggestedItemProps.showSuggestedItems &&
-          suggestedItems.isEmpty) {
-        final widgetSuggestedItems =
-            widget.popupProps.suggestedItemProps.suggestedItems?.call(data);
+  Future<void> _loadPinnedItems() async {
+    final props = widget.popupProps.pinnedItemsProps;
+    if (props == null || !props.showPinnedItems) return;
 
-        if (widgetSuggestedItems != null) {
-          suggestedItems.addAll(widgetSuggestedItems);
-        }
+    await PinnedItemsDatabase.init();
+    if (!mounted) return;
+
+    for (final savedItem in _pinnedItemsDatabase.get(props.pinnedItemsTag)) {
+      final item = props.pinnedItemsEntityTransformer(savedItem);
+      if (!_isDisabled(item) && _itemIndexInList(pinnedItems, item) == -1) {
+        pinnedItems.add(item);
       }
+    }
+  }
 
-      if (widget.popupProps.pinnedItemsProps != null &&
-          widget.popupProps.pinnedItemsProps!.showPinnedItems &&
-          pinnedItems.isEmpty) {
-        await PinnedItemsDatabase.init();
+  bool _isPinned(T item) =>
+      widget.popupProps.pinnedItemsProps?.showPinnedItems == true &&
+      !_isDisabled(item) &&
+      _itemIndexInList(pinnedItems, item) != -1;
 
-        final pinProps = widget.popupProps.pinnedItemsProps!;
+  List<T> _orderPinnedItems(List<T> items) {
+    if (widget.popupProps.pinnedItemsProps?.showPinnedItems != true ||
+        pinnedItems.isEmpty) {
+      return items;
+    }
 
-        final databasePinnedItems = _pinnedItemsDatabase.get(
-          pinProps.pinnedItemsTag,
-        );
-
-        final transformedPinnedItems = databasePinnedItems.map((item) {
-          return pinProps.pinnedItemsEntityTransformer.call(item);
-        }).toList();
-
-        // Filter disabled items
-        if (widget.popupProps.disabledItemFn != null) {
-          transformedPinnedItems.removeWhere(
-            (item) => widget.popupProps.disabledItemFn!(item),
-          );
-        }
-
-        for (var item in transformedPinnedItems) {
-          if (data.contains(item)) {
-            pinnedItems.add(item);
-          } else {
-            _pinnedItemsDatabase.deleteItem(
-              tag: pinProps.pinnedItemsTag,
-              item: pinProps.pinnedItemsStringTransformer(item),
-            );
-          }
-        }
+    // Render loaded objects in saved pin order without changing source order.
+    final pinnedRows = List.generate(pinnedItems.length, (_) => <T>[]);
+    final unpinnedRows = <T>[];
+    for (final item in items) {
+      final pinIndex =
+          _isPinned(item) ? _itemIndexInList(pinnedItems, item) : -1;
+      if (pinIndex == -1) {
+        unpinnedRows.add(item);
+      } else {
+        pinnedRows[pinIndex].add(item);
       }
-    });
+    }
+    return [...pinnedRows.expand((rows) => rows), ...unpinnedRows];
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _ownerScope =
+        context.dependOnInheritedWidgetOfExactType<ItemsLoaderScope<T>>();
+    final ownerSelected = _ownerScope?.selectedItems;
+    if (_ownerSelected != ownerSelected) {
+      _ownerSelected?.removeListener(_syncOwnerSelection);
+      _ownerSelected = ownerSelected;
+      _ownerSelected?.addListener(_syncOwnerSelection);
+      _syncOwnerSelection();
+    }
+    final loader = _ownerScope?.loader;
+    if (_itemsLoader != loader) {
+      _itemsLoader?.removeListener(_onItemsLoaderChanged);
+      _itemsLoader = loader;
+      _itemsLoadMode = loader?.mode;
+      loader?.addListener(_onItemsLoaderChanged);
+    }
+  }
+
+  void _syncOwnerSelection() {
+    if (mounted && _ownerSelected != null) {
+      _selectedItemsNotifier.value = List<T>.of(_ownerSelected!.value);
+    }
+  }
+
+  void _onItemsLoaderChanged() {
+    if (!mounted) return;
+    final loader = _itemsLoader!;
+    _loadGeneration++;
+    if (_itemsLoadMode != loader.mode) {
+      _itemsLoadMode = loader.mode;
+      _sharedRevision = -1;
+      _sharedFilter = null;
+      _sharedError = null;
+      _firstSharedPresentation = true;
+      _cachedItems.clear();
+      _debounce?.cancel();
+      // The owning dropdown may be in didUpdateWidget when the mode changes.
+      Future.delayed(Duration.zero, () {
+        if (mounted) {
+          _loadingNotifier.value = false;
+          _manageLoadItems(searchBoxController.text, isFirstLoad: true);
+        }
+      });
+      return;
+    }
+    _loadingNotifier.value = loader.isLoading;
+    _showSharedItems();
+  }
+
+  Future<void> _showSharedItems() async {
+    final loader = _itemsLoader;
+    if (loader == null || !mounted) return;
+    try {
+      await (_pinnedItemsLoadFuture ??= _loadPinnedItems());
+    } catch (error, stackTrace) {
+      _setErrorToStream(error, stackTrace);
+      return;
+    }
+    if (!mounted || loader != _itemsLoader || loader.isLoading) return;
+    if (loader.error != null) {
+      if (!identical(_sharedError, loader.error)) {
+        _sharedError = loader.error;
+        _setErrorToStream(loader.error!, loader.stackTrace);
+      }
+      return;
+    }
+
+    final filter = searchBoxController.text;
+    if (_sharedRevision == loader.revision && _sharedFilter == filter) return;
+    _sharedRevision = loader.revision;
+    _sharedFilter = filter;
+    _sharedError = null;
+    _cachedItems
+      ..clear()
+      ..addAll(loader.items);
+    final loadProps = widget.popupProps.infiniteScrollProps?.loadProps;
+    isInfiniteScrollEnded = loader.mode != ItemsLoadMode.onOpen ||
+        loadProps == null ||
+        loader.items.length < loadProps.take;
+    final data =
+        loader.mode == ItemsLoadMode.onOpen && widget.popupProps.disableFilter
+            ? List<T>.of(_cachedItems)
+            : _applyFilter(filter);
+    final firstLoad = _firstSharedPresentation;
+    _firstSharedPresentation = false;
+    _addDataToStream(data, isFirstLoad: firstLoad);
   }
 
   @override
@@ -141,6 +243,8 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
 
   @override
   void dispose() {
+    _itemsLoader?.removeListener(_onItemsLoaderChanged);
+    _ownerSelected?.removeListener(_syncOwnerSelection);
     _itemsStream.close();
     _debounce?.cancel();
 
@@ -177,8 +281,7 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 _searchField(),
-                _suggestedItemsWidget(),
-                _pinnedItemsWidget(),
+                _smartItemsWidget(),
                 Flexible(
                   fit: widget.popupProps.fit,
                   child: Stack(
@@ -194,7 +297,9 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
                             return _noDataWidget();
                           }
 
-                          final itemCount = snapshot.data!.length;
+                          final displayedItems =
+                              _orderPinnedItems(snapshot.data!);
+                          final itemCount = displayedItems.length;
                           return RawScrollbar(
                             controller:
                                 widget.popupProps.listViewProps.controller ??
@@ -287,7 +392,7 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
                                     itemCount + (isInfiniteScrollEnded ? 0 : 1),
                                 itemBuilder: (context, index) {
                                   if (index < itemCount) {
-                                    var item = snapshot.data![index];
+                                    var item = displayedItems[index];
                                     return widget.isMultiSelectionMode
                                         ? _itemWidgetMultiSelection(item)
                                         : _itemWidgetSingleSelection(item);
@@ -425,6 +530,33 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
     String filter, {
     bool isFirstLoad = false,
   }) async {
+    if (!mounted) return;
+    final loader = _itemsLoader;
+    if (loader != null && loader.mode != ItemsLoadMode.onOpen) {
+      final generation = loader.generation;
+      _loadingNotifier.value = loader.isLoading;
+      if (isFirstLoad &&
+          loader.mode == ItemsLoadMode.onFirstOpen &&
+          !loader.hasLoaded) {
+        try {
+          await loader.load();
+        } catch (_) {
+          // The shared loading state publishes the error to the popup.
+        }
+      }
+      if (loader.generation != generation) return;
+      await _showSharedItems();
+      return;
+    }
+    final generation = ++_loadGeneration;
+    try {
+      await (_pinnedItemsLoadFuture ??= _loadPinnedItems());
+    } catch (error, stackTrace) {
+      _setErrorToStream(error, stackTrace);
+      return;
+    }
+    if (!mounted || generation != _loadGeneration) return;
+
     //if the filter is not handled by user, we load full list once
     if (!widget.popupProps.cacheItems) _cachedItems.clear();
 
@@ -446,7 +578,8 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
     bool showLoading = true,
     bool isFirstLoad = false,
   }) async {
-    if (widget.items == null) return;
+    if (!mounted || widget.items == null) return;
+    final generation = _loadGeneration;
 
     final loadProps = widget.popupProps.infiniteScrollProps?.loadProps;
 
@@ -457,6 +590,7 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
     try {
       final List<T> myItems =
           await widget.items!(filter, loadProps?.copy(skip: skip));
+      if (!mounted || generation != _loadGeneration) return;
 
       if (loadProps != null) {
         isInfiniteScrollEnded = myItems.length < loadProps.take;
@@ -464,6 +598,18 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
 
       //add new online items to cache list
       _cachedItems.addAll(myItems);
+      final source = _ownerScope?.source;
+      if (filter.isEmpty && source != null) {
+        final offset = skip ?? loadProps?.skip ?? 0;
+        final prefix = offset == 0 ||
+            (source.hasData &&
+                source.completePrefix &&
+                offset == source.items.length);
+        source.publish(
+            skip == null || skip == 0 ? myItems : [...source.items, ...myItems],
+            completePrefix: prefix,
+            complete: prefix && isInfiniteScrollEnded);
+      }
 
       //manage data filtering
       if (widget.popupProps.disableFilter) {
@@ -472,10 +618,11 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
         _addDataToStream(_applyFilter(filter), isFirstLoad: isFirstLoad);
       }
     } catch (e) {
+      if (!mounted || generation != _loadGeneration) return;
       _setErrorToStream(e);
     }
 
-    if (showLoading) {
+    if (mounted && showLoading) {
       _loadingNotifier.value = false;
     }
   }
@@ -517,14 +664,14 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
         item,
         _isDisabled(item),
         !widget.popupProps.showSelectedItems ? false : _isSelectedItem(item),
-        pinnedItems.contains(item),
+        _isPinned(item),
       );
 
       if (widget.popupProps.interceptCallBacks) return w;
 
       return CustomInkWell(
         clickProps: widget.popupProps.itemClickProps,
-        onTap: _isDisabled(item) ? null : () => _handleSelectedItem(item),
+        onTap: _isDisabled(item) ? null : () => _handleItemTap(item),
         child: IgnorePointer(
           ignoring: widget.popupProps.itemClickProps.ignorePointers,
           child: w,
@@ -556,7 +703,7 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
         selected: !widget.popupProps.showSelectedItems
             ? false
             : _isSelectedItem(item),
-        onTap: _isDisabled(item) ? null : () => _handleSelectedItem(item),
+        onTap: _isDisabled(item) ? null : () => _handleItemTap(item),
       );
     }
   }
@@ -574,7 +721,7 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
         layout: (context, isChecked) => _itemWidgetSingleSelection(item),
         isChecked: _isSelectedItem(item),
         isDisabled: _isDisabled(item),
-        onChanged: (c) => _handleSelectedItem(item),
+        onChanged: (c) => _handleItemTap(item),
       );
     } else {
       return CheckBoxWidget(
@@ -584,7 +731,7 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
         layout: (context, isChecked) => _itemWidgetSingleSelection(item),
         isChecked: _isSelectedItem(item),
         isDisabled: _isDisabled(item),
-        onChanged: (c) => _handleSelectedItem(item),
+        onChanged: (c) => _handleItemTap(item),
       );
     }
   }
@@ -725,58 +872,41 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
     );
   }
 
-  Widget _suggestedItemsWidget() {
-    if (widget.popupProps.suggestedItemProps.showSuggestedItems &&
-        widget.popupProps.suggestedItemProps.suggestedItems != null) {
-      return StreamBuilder<List<T>>(
-          stream: _itemsStream.stream,
-          builder: (context, snapshot) {
-            if (snapshot.hasData) {
-              return _buildSuggestedItems(suggestedItems);
-            } else {
-              return SizedBox.shrink();
-            }
-          });
-    }
-
-    return SizedBox.shrink();
+  Widget _smartItemsWidget() {
+    final presentation = _ownerScope?.smartSelection;
+    if (presentation == null) return const SizedBox.shrink();
+    return ValueListenableBuilder<SmartSelectionPresentation<T>>(
+        valueListenable: presentation,
+        builder: (context, value, _) {
+          final builder = value.builder;
+          if (builder == null) return const SizedBox.shrink();
+          return IgnorePointer(
+              ignoring: _ownerScope?.isEnabled?.call() == false,
+              child: builder(context, value.items, _handleSmartItemTap));
+        });
   }
 
-  Widget _buildSuggestedItems(List<T> suggestedItems) {
-    if (suggestedItems.isEmpty) return const SizedBox.shrink();
+  void _handleSmartItemTap(T item) {
+    final source = _ownerScope?.source;
+    if (source == null) return;
+    final index = _itemIndexInList(source.items, item);
+    if (index == -1) return;
+    final canonical = source.items[index];
+    final allowed =
+        _ownerScope?.canSelect?.call(canonical) ?? !_isDisabled(canonical);
+    if (!allowed) return;
+    widget.onItemTapped?.call(canonical);
+    _handleSelectedItem(canonical);
+  }
 
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 8),
-      child: LayoutBuilder(builder: (context, constraints) {
-        return CustomSingleScrollView(
-          scrollProps: widget.popupProps.suggestedItemProps.scrollProps,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minWidth: constraints.maxWidth),
-            child: Row(
-              mainAxisSize: MainAxisSize.max,
-              mainAxisAlignment:
-                  widget.popupProps.suggestedItemProps.suggestedItemsAlignment,
-              children: suggestedItems
-                  .map(
-                    (f) => CustomInkWell(
-                      clickProps:
-                          widget.popupProps.suggestedItemProps.itemClickProps,
-                      onTap: () => _handleSelectedItem(f),
-                      child: widget.popupProps.suggestedItemProps
-                                  .suggestedItemBuilder !=
-                              null
-                          ? widget.popupProps.suggestedItemProps
-                                  .suggestedItemBuilder!(
-                              context, f, _isSelectedItem(f))
-                          : _suggestedItemDefaultWidget(f),
-                    ),
-                  )
-                  .toList(),
-            ),
-          ),
-        );
-      }),
-    );
+  void _handleItemTap(T item) {
+    if (_ownerScope?.isEnabled?.call() == false ||
+        _ownerScope?.canSelect?.call(item) == false ||
+        _isDisabled(item)) {
+      return;
+    }
+    widget.onItemTapped?.call(item);
+    _handleSelectedItem(item);
   }
 
   void _handleSelectedItem(T newSelectedItem) {
@@ -800,30 +930,6 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
         widget.onChanged!(List.filled(1, newSelectedItem));
       }
     }
-  }
-
-  Widget _suggestedItemDefaultWidget(T item) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      margin: EdgeInsets.only(left: 8),
-      decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10),
-          color: Theme.of(context).primaryColorLight),
-      child: Row(
-        children: [
-          Text(
-            _selectedItemAsString(item),
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleSmall,
-          ),
-          Padding(padding: EdgeInsets.only(left: 8)),
-          Visibility(
-            child: Icon(Icons.check_box_outlined),
-            visible: _isSelectedItem(item),
-          )
-        ],
-      ),
-    );
   }
 
   ///function that return the String value of an object
@@ -879,6 +985,11 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
   List<T> get getLoadedItems => List.from(_currentShowedItems);
 
   void addPinnedItem(T item) {
+    if (widget.popupProps.pinnedItemsProps?.showPinnedItems != true ||
+        _isDisabled(item) ||
+        _itemIndexInList(pinnedItems, item) != -1) {
+      return;
+    }
     pinnedItems.add(item);
     _pinnedItemsDatabase.addItem(
       tag: widget.popupProps.pinnedItemsProps!.pinnedItemsTag,
@@ -889,11 +1000,14 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
   }
 
   void removePinnedItem(T item) {
-    pinnedItems.remove(item);
+    final props = widget.popupProps.pinnedItemsProps;
+    if (props == null) return;
+    final index = _itemIndexInList(pinnedItems, item);
+    if (index == -1) return;
+    final pinnedItem = pinnedItems.removeAt(index);
     _pinnedItemsDatabase.deleteItem(
-      tag: widget.popupProps.pinnedItemsProps!.pinnedItemsTag,
-      item: widget.popupProps.pinnedItemsProps!
-          .pinnedItemsStringTransformer(item),
+      tag: props.pinnedItemsTag,
+      item: props.pinnedItemsStringTransformer(pinnedItem),
     );
     setState(() {});
   }
@@ -916,70 +1030,15 @@ class DropdownSearchPopupState<T> extends State<DropdownSearchPopup<T>> {
     return true;
   }
 
-  _pinnedItemsWidget() {
-    if (widget.popupProps.pinnedItemsProps != null &&
-        widget.popupProps.pinnedItemsProps!.showPinnedItems) {
-      return StreamBuilder<List<T>>(
-          stream: _itemsStream.stream,
-          builder: (context, snapshot) {
-            if (snapshot.hasData) {
-              return _buildPinnedItems(pinnedItems);
-            } else {
-              return SizedBox.shrink();
-            }
-          });
-    }
-
-    return SizedBox.shrink();
-  }
-
-  Widget _buildPinnedItems(List<T> pinnedItems) {
-    if (pinnedItems.isEmpty) return const SizedBox.shrink();
-
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 8),
-      child: LayoutBuilder(builder: (context, constraints) {
-        // TODO: Make an animated list of suggested items
-        return CustomSingleScrollView(
-          scrollProps: widget.popupProps.pinnedItemsProps!.scrollProps,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minWidth: constraints.maxWidth),
-            child: Row(
-              mainAxisSize: MainAxisSize.max,
-              mainAxisAlignment:
-                  widget.popupProps.pinnedItemsProps!.pinnedItemsAlignment,
-              children: pinnedItems
-                  .map(
-                    (f) => CustomInkWell(
-                      clickProps:
-                          widget.popupProps.pinnedItemsProps!.itemClickProps,
-                      onTap: () => _handleSelectedItem(f),
-                      child: widget.popupProps.pinnedItemsProps!
-                                  .pinnedItemsBuilder !=
-                              null
-                          ? widget.popupProps.pinnedItemsProps!
-                                  .pinnedItemsBuilder!(
-                              context, f, _isSelectedItem(f))
-                          : _suggestedItemDefaultWidget(f),
-                    ),
-                  )
-                  .toList(),
-            ),
-          ),
-        );
-      }),
-    );
-  }
-
-  _buildPinnedItemTrailing(T item) {
-    if (pinnedItems.contains(item)) {
+  Widget _buildPinnedItemTrailing(T item) {
+    if (_isPinned(item)) {
       return IconButton(
         onPressed: () => removePinnedItem(item),
         icon: Icon(Icons.star),
       );
     } else {
       return IconButton(
-        onPressed: () => addPinnedItem(item),
+        onPressed: _isDisabled(item) ? null : () => addPinnedItem(item),
         icon: Icon(Icons.star_border),
       );
     }

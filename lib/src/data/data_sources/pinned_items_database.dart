@@ -1,5 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'dropdown_cache_storage.dart';
+
 /// Stores multiple pinned-items lists (as `List<String>`) keyed by a user tag.
 ///
 /// Under the hood we use `SharedPreferences.setStringList`, and we keep a
@@ -9,33 +11,51 @@ class PinnedItemsDatabase {
   static const String _tagsKey = '${_prefix}__tags';
 
   static SharedPreferencesWithCache? _prefs;
+  static Future<void>? _initialization;
 
   /// Call once (e.g. app startup) to enable synchronous reads via [get].
   static Future<void> init() async {
-    _prefs ??= await SharedPreferencesWithCache.create(
-      cacheOptions: const SharedPreferencesWithCacheOptions(),
-    );
+    if (_prefs != null) return;
+    await (_initialization ??= _initialize());
+  }
+
+  static Future<void> _initialize() async {
+    try {
+      _prefs = await SharedPreferencesWithCache.create(
+        cacheOptions: const SharedPreferencesWithCacheOptions(),
+      );
+    } catch (_) {
+      _initialization = null;
+      rethrow;
+    }
   }
 
   String _storageKey(String tag) => '$_prefix$tag';
+
+  Future<void> _mutate(
+      Future<void> Function(SharedPreferencesWithCache prefs) operation) {
+    return DropdownCacheStorage.run(() async {
+      await init();
+      await operation(_prefs!);
+    });
+  }
 
   Future<void> addItem({
     required String tag,
     required String item,
     bool dedupe = true,
-  }) async {
-    await init();
-    final prefs = _prefs!;
-    final key = _storageKey(tag);
-    final current = (prefs.getStringList(key) ?? const <String>[]).toList();
+  }) =>
+      _mutate((prefs) async {
+        final key = _storageKey(tag);
+        final current = (prefs.getStringList(key) ?? const <String>[]).toList();
 
-    if (!dedupe || !current.contains(item)) {
-      current.add(item);
-      await prefs.setStringList(key, current);
-    }
+        if (!dedupe || !current.contains(item)) {
+          current.add(item);
+          await prefs.setStringList(key, current);
+        }
 
-    await _addTagToIndex(prefs, tag);
-  }
+        await _addTagToIndex(prefs, tag);
+      });
 
   /// Deletes one [item] from the list stored under [tag].
   ///
@@ -44,33 +64,31 @@ class PinnedItemsDatabase {
   Future<void> deleteItem({
     required String tag,
     required String item,
-  }) async {
-    await init();
-    final prefs = _prefs!;
-    final key = _storageKey(tag);
-    final current = (prefs.getStringList(key) ?? const <String>[]).toList();
+  }) =>
+      _mutate((prefs) async {
+        final key = _storageKey(tag);
+        final current = (prefs.getStringList(key) ?? const <String>[]).toList();
 
-    final removed = current.remove(item);
-    if (!removed) return;
+        final removed = current.remove(item);
+        if (!removed) return;
 
-    if (current.isEmpty) {
-      await prefs.remove(key);
-      await _removeTagFromIndex(prefs, tag);
-    } else {
-      await prefs.setStringList(key, current);
-      await _addTagToIndex(prefs, tag);
-    }
-  }
+        if (current.isEmpty) {
+          await prefs.remove(key);
+          await _removeTagFromIndex(prefs, tag);
+        } else {
+          await prefs.setStringList(key, current);
+          await _addTagToIndex(prefs, tag);
+        }
+      });
 
   Future<void> save({
     required String tag,
     required List<String> items,
-  }) async {
-    await init();
-    final prefs = _prefs!;
-    await prefs.setStringList(_storageKey(tag), items);
-    await _addTagToIndex(prefs, tag);
-  }
+  }) =>
+      _mutate((prefs) async {
+        await prefs.setStringList(_storageKey(tag), items);
+        await _addTagToIndex(prefs, tag);
+      });
 
   List<String> get(String tag) {
     final prefs = _prefs;
@@ -81,30 +99,26 @@ class PinnedItemsDatabase {
     return prefs!.getStringList(_storageKey(tag)) ?? const <String>[];
   }
 
-  Future<void> remove(String tag) async {
-    await init();
-    final prefs = _prefs!;
-    await prefs.remove(_storageKey(tag));
-    await _removeTagFromIndex(prefs, tag);
-  }
+  Future<void> remove(String tag) => _mutate((prefs) async {
+        await prefs.remove(_storageKey(tag));
+        await _removeTagFromIndex(prefs, tag);
+      });
 
   /// Returns all tags that have been saved via [save].
-  Future<Set<String>> getTags() async {
-    await init();
-    final prefs = _prefs!;
-    return (prefs.getStringList(_tagsKey) ?? const <String>[]).toSet();
-  }
+  Future<Set<String>> getTags() => DropdownCacheStorage.run(() async {
+        await init();
+        return (_prefs!.getStringList(_tagsKey) ?? const <String>[]).toSet();
+      });
 
   /// Clears all pinned-item lists saved via this database.
-  Future<void> clearAll() async {
-    await init();
-    final prefs = _prefs!;
-    final tags = (prefs.getStringList(_tagsKey) ?? const <String>[]).toSet();
-    for (final tag in tags) {
-      await prefs.remove(_storageKey(tag));
-    }
-    await prefs.remove(_tagsKey);
-  }
+  Future<void> clearAll() => _mutate((prefs) async {
+        await prefs.reloadCache();
+        final keys =
+            prefs.keys.where((key) => key.startsWith(_prefix)).toList();
+        for (final key in keys) {
+          await prefs.remove(key);
+        }
+      });
 
   Future<void> _addTagToIndex(
       SharedPreferencesWithCache prefs, String tag) async {

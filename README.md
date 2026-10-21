@@ -87,6 +87,176 @@ AdaptiveDropdownSearch<T>(
 )
 ```
 
+## Pinned Items
+
+Enable `PinnedItemsProps.showPinnedItems` to move pinned rows to the top of the
+main popup list, ordered by when they were pinned (oldest first). Unpinned rows
+keep their original order, and unpinning restores a row to its original position.
+Pinned rows follow the normal search filter; pins stay saved even when a search
+or loaded page does not contain them.
+
+Pinned rows use the main list's row builder and click settings. Customize them
+through `PopupProps.itemBuilder` using its `isPinned` argument. The former
+horizontal-section settings (`scrollProps`, `pinnedItemsAlignment`,
+`itemClickProps`, and `pinnedItemsBuilder` on `PinnedItemsProps`) remain accepted
+for compatibility but are no longer used.
+
+## Item loading
+
+Choose when to load items with `itemsLoadMode` on either `DropdownSearch` or
+`DropdownSearch.multiSelection`:
+
+| Mode | Behavior |
+| --- | --- |
+| `ItemsLoadMode.onOpen` | Default: load on every popup opening, with the existing search and infinite-scroll behavior. |
+| `ItemsLoadMode.manual` | Load only when you explicitly call `loadItems()`. Until then, the popup shows an empty list. |
+| `ItemsLoadMode.onFirstOpen` | Load on the first opening and reuse the internal list on later openings. Failed initial loads retry on the next opening; successful empty lists are cached. |
+
+```dart
+final dropdownKey = GlobalKey<DropdownSearchState<String>>();
+
+DropdownSearch<String>(
+  key: dropdownKey,
+  itemsLoadMode: ItemsLoadMode.manual,
+  items: (filter, loadProps) => fetchAllItems(),
+  popupProps: PopupProps.menu(showSearchBox: true),
+);
+
+// Call after the dropdown has mounted, even if its popup is closed.
+final items = await dropdownKey.currentState!.loadItems();
+```
+
+`loadItems()` replaces the internal list and refreshes an open popup using its
+current search text. It works in every mode, returns a copy of the loaded items,
+and propagates errors without discarding the last successful list. Concurrent
+calls share the pending request. In `onOpen` mode, opening still loads normally
+after an explicit load.
+
+`manual` and `onFirstOpen` request the complete list with an empty filter and
+null `loadProps`. Searching always filters that list locally using `filterFn`,
+`itemAsString`, or the default matching behavior, regardless of `cacheItems` or
+`disableFilter`. These modes cannot be combined with `infiniteScrollProps`.
+
+The cache belongs to the dropdown widget's state: it survives popup dismissal
+and ordinary rebuilds, including replacing the `items` callback. Call
+`loadItems()` to refresh after changing the data source. Changing
+`itemsLoadMode` or disposing the dropdown resets the cache. `retrieveItems()`
+continues to retrieve results independently and does not populate this cache.
+`onItemsLoaded` continues to report results displayed by an open popup; loading
+while closed returns results through the `loadItems()` future.
+
+## Smart Selection
+
+Smart selection tracks dated user taps independently of automatic selection.
+Automatic selection is off by default; enable it with `autoSelect: true`.
+A custom builder can show up to three verified shortcuts inside the popup:
+
+```dart
+DropdownSearch<int>(
+  items: (filter, loadProps) => [1, 2, 3],
+  smartSelectionProps: SmartSelectionProps<int>(
+    tag: 'frequent-choice',
+    usageRange: const Duration(days: 7),
+    autoSelect: true,
+    itemToString: (item) => item.toString(),
+    itemFromString: int.parse,
+    listBuilder: (context, items, selectItem) => Wrap(
+      spacing: 8,
+      children: items.map((item) => ActionChip(
+        label: Text(item.toString()),
+        onPressed: () => selectItem(item),
+      )).toList(),
+    ),
+  ),
+  popupProps: const PopupProps.dialog(showSearchBox: true),
+  onChanged: (item) => print(item),
+)
+```
+
+The builder appears below the search bar (or at the popup's top when search is
+hidden). It receives an immutable list, possibly empty. Shortcuts remain visible
+while searching, select through normal callbacks, and count as user taps.
+They are ranked by in-range count, then most recent usage, then identifier.
+Tracking and shortcuts work with `autoSelect: false` too.
+
+Original item loading verifies both shortcuts and automatic selection. Smart
+selection makes no extra item requests: manual mode waits for `loadItems()`,
+while on-open and first-open modes can verify during popup opening. Loaded
+objects are used for display and selection. Only a complete, successful,
+unfiltered source list removes missing items from history; filtered results,
+partial pages, and load failures never prove that an item was deleted.
+Disabled or unrestorable items are excluded from shortcuts.
+
+Identifiers must be stable and unique. Dropdowns sharing a tag share history
+and must represent the same underlying collection. Counts use UTC timestamps
+and the inclusive interval from `now - usageRange` through `now`. Out-of-window
+history remains available for a wider future range until explicitly cleared
+or removed because its item is absent from the complete original list.
+
+With `autoSelect: true`, the initial selection waits for a confirmed, unique
+winner and respects `onBeforeChange` and `onChanged`. Tied leaders do not
+auto-select. Explicit values take precedence. Explicit selection changes,
+configuration changes, disposal, and relevant cache clearing cancel a pending
+automatic selection; opening the popup itself does not. Existing callers must
+opt in explicitly to retain automatic selection.
+
+Enabled item taps count even when repeating a selection or when
+`onBeforeChange` rejects the change. Programmatic changes, automatic selections,
+and pin controls do not count. Gestures owned by the caller through
+`interceptCallBacks` are not tracked. Multi-selection does not support smart
+selection. Mounted builders sharing a tag refresh after successful history
+changes, cache clearing, and original-source updates.
+
+### Suggested items below the field
+
+`PopupProps.suggestedItemProps.suggestedItems` accepts an independent `List<T>`
+(default: empty). Suggestions appear below the complete FormField (or custom
+field) on the first frame, without loading or opening the dropdown. Rebuild
+the widget with a new list to update them. Migrate callbacks such as
+`suggestedItems: (items) => items.take(3).toList()` to an explicit list such as
+`suggestedItems: [1, 2, 3]`. Default and custom `suggestedItemBuilder`
+widgets keep their scrolling, alignment, and click settings. Tapping a
+suggestion selects directly without opening the popup; multi-selection toggles
+the item through the normal selection callbacks. Single-selection suggestion
+taps also count toward smart-selection history.
+
+### Clearing saved dropdown history
+
+```dart
+await DropdownSearchCache.clearSmartSelection(tag: 'frequent-choice');
+await DropdownSearchCache.clearPinnedItems(tag: 'my-pins');
+await DropdownSearchCache.clearAll();
+```
+
+Each method accepts an optional `tag`. Omit it to clear every tag for that cache
+type. `clearAll(tag: 'example')` clears that tag in both namespaces. Awaiting the
+future ensures earlier pending writes have finished and the requested history
+has been removed; clearing failures are returned through the future.
+
+To remove only old usage while retaining recent counts, pass a positive
+`olderThan` duration to `clearSmartSelection` or `clearAll`:
+
+```dart
+await DropdownSearchCache.clearSmartSelection(
+  tag: 'frequent-choice',
+  olderThan: const Duration(days: 7),
+);
+await DropdownSearchCache.clearAll(olderThan: const Duration(days: 30));
+```
+
+Only records strictly before `now - olderThan` are removed. Records at the
+cutoff, recent usage, and future-dated records are preserved. Empty histories
+are removed. In this mode `clearAll` preserves pinned items, which have no
+expiration date. Omitting `olderThan` retains the full-clear behavior above.
+Choose a retention duration long enough for every usage range sharing a tag;
+deleted records cannot be recovered if a wider range is used later.
+
+Clearing preserves current selections and pins displayed in already-open
+popups. Reopening a popup reloads its cleared pin history, and future dropdown
+initializations use the cleared smart-selection history. Item-provider caches
+and unrelated shared preferences are preserved. Persistence operations are
+serialized within the current isolate.
+
 ## Infinite Scroll
 To enable infinite scroll all you have to do is to declare `infiniteScrollProps` and of course don't forget to pass `loadProps` to your API like this:
 ```dart
@@ -301,9 +471,7 @@ DropdownSearch<UserModel>.multiSelection(
     itemBuilder: userModelPopupItem,
     suggestedItemProps: SuggestedItemProps(
       showSuggestedItems: true,
-      suggestedItems: (us) {
-        return us.where((e) => e.name.contains("Mrs")).toList();
-      },
+      suggestedItems: UserModel.suggestedUsers,
     ),
   ),
 ),

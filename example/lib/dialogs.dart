@@ -115,11 +115,7 @@ class _DialogExamplesPageState extends State<DialogExamplesPage> {
                         itemBuilder: userModelPopupItem,
                         suggestedItemProps: SuggestedItemProps(
                           showSuggestedItems: true,
-                          suggestedItems: (us) {
-                            return us
-                                .where((e) => e.name.contains("Mrs"))
-                                .toList();
-                          },
+                          suggestedItems: UserModel.suggestedUsers,
                         ),
                       ),
                     ),
@@ -134,11 +130,7 @@ class _DialogExamplesPageState extends State<DialogExamplesPage> {
                         itemBuilder: userModelPopupItem,
                         suggestedItemProps: SuggestedItemProps(
                           showSuggestedItems: true,
-                          suggestedItems: (us) {
-                            return us
-                                .where((e) => e.name.contains("Mrs"))
-                                .toList();
-                          },
+                          suggestedItems: UserModel.suggestedUsers,
                           suggestedItemBuilder: (context, item, isSelected) {
                             return Container(
                               padding: EdgeInsets.symmetric(

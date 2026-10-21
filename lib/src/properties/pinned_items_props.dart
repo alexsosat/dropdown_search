@@ -2,7 +2,8 @@ import 'package:dropdown_search/dropdown_search.dart';
 import 'package:flutter/material.dart';
 
 class PinnedItemsProps<T> {
-  /// Whether to show pinned items
+  /// Whether to move pinned rows to the start of the main list.
+  /// Rows follow the normal search filter and appear in oldest-pin-first order.
   final bool showPinnedItems;
 
   /// Tag to save pinned items into local database
@@ -14,16 +15,19 @@ class PinnedItemsProps<T> {
   /// Transformer to parse from a T to a String
   final PinnedItemsStringTransformer<T> pinnedItemsStringTransformer;
 
-  /// scrollbar properties
+  /// Obsolete horizontal-section setting, retained for compatibility.
+  /// Pinned rows use [PopupProps.listViewProps] and [PopupProps.scrollbarProps].
   final ScrollProps scrollProps;
 
-  /// alignment of the pinned items
+  /// Obsolete horizontal-section alignment, retained for compatibility.
   final MainAxisAlignment pinnedItemsAlignment;
 
-  /// item click props
+  /// Obsolete horizontal-section click settings, retained for compatibility.
+  /// Pinned rows use [PopupProps.itemClickProps].
   final ClickProps itemClickProps;
 
-  /// builder for the pinned items
+  /// Obsolete horizontal-section builder, retained for compatibility.
+  /// Use [PopupProps.itemBuilder] and its `isPinned` argument to customize rows.
   final FavoriteItemsBuilder<T>? pinnedItemsBuilder;
 
   const PinnedItemsProps({

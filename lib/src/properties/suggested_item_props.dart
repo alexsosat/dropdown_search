@@ -3,14 +3,14 @@ import 'package:flutter/material.dart';
 import '../../dropdown_search.dart';
 
 class SuggestedItemProps<T> {
-  ///show or hide favorites items
+  /// Show suggested shortcuts below the field from the first frame.
   final bool showSuggestedItems;
 
   ///to customize favorites chips
   final FavoriteItemsBuilder<T>? suggestedItemBuilder;
 
-  ///favorites items list
-  final SuggestedItems<T>? suggestedItems;
+  /// Independent suggestions, available without loading dropdown items.
+  final List<T> suggestedItems;
 
   ///favorite items alignment
   final MainAxisAlignment suggestedItemsAlignment;
@@ -21,7 +21,7 @@ class SuggestedItemProps<T> {
 
   const SuggestedItemProps({
     this.suggestedItemBuilder,
-    this.suggestedItems,
+    this.suggestedItems = const [],
     this.suggestedItemsAlignment = MainAxisAlignment.start,
     this.showSuggestedItems = false,
     this.itemClickProps = const ClickProps(),

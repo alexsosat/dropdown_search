@@ -1,6 +1,9 @@
 library dropdown_search;
 
 import 'dart:async';
+import 'src/data/data_sources/dropdown_cache_storage.dart';
+import 'src/data/data_sources/smart_selection_database.dart';
+import 'src/properties/smart_selection_props.dart';
 import 'package:dropdown_search/src/properties/dropdown_props.dart';
 import 'package:dropdown_search/src/properties/infinite_scroll_props.dart';
 import 'package:dropdown_search/src/properties/scroll_props.dart';
@@ -11,7 +14,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'src/properties/dropdown_suffix_props.dart';
+import 'src/properties/items_load_mode.dart';
 import 'src/properties/popup_props.dart';
+import 'src/items_loader.dart';
+import 'src/dropdown_source.dart';
 import 'src/widgets/custom_scroll_view.dart';
 import 'src/widgets/popup_menu.dart';
 import 'src/widgets/dropdown_search_popup.dart';
@@ -22,6 +28,8 @@ export 'src/properties/dialog_props.dart';
 export 'src/properties/dropdown_props.dart';
 export 'src/properties/suggested_item_props.dart';
 export 'src/properties/pinned_items_props.dart';
+export 'src/properties/smart_selection_props.dart';
+export 'src/dropdown_search_cache.dart';
 export 'src/properties/icon_button_props.dart';
 export 'src/properties/item_props.dart';
 export 'src/properties/list_view_props.dart';
@@ -31,6 +39,7 @@ export 'src/properties/popup_props.dart';
 export 'src/properties/scrollbar_props.dart';
 export 'src/properties/text_field_props.dart';
 export 'src/properties/infinite_scroll_props.dart';
+export 'src/properties/items_load_mode.dart';
 export 'src/properties/scroll_props.dart';
 export 'src/widgets/dropdown_search_popup.dart';
 export 'src/properties/dropdown_suffix_props.dart';
@@ -74,9 +83,6 @@ typedef OnItemRemoved<T> = void Function(List<T> selectedItems, T removedItem);
 typedef PopupBuilder<T> = Widget Function(
     BuildContext context, Widget popupWidget);
 
-///[items] are the original item from [items] or/and [items]
-typedef SuggestedItems<T> = List<T> Function(List<T> items);
-
 /// Transformer to parse from a String to a T
 typedef PinnedItemsEntityTransformer<T> = T Function(String item);
 
@@ -93,6 +99,16 @@ class DropdownSearch<T> extends StatefulWidget {
 
   ///items/data
   final DropdownSearchOnFind<T>? items;
+
+  /// Controls automatic loading and caching across popup openings.
+  /// Cached modes always search locally and cannot use infinite scrolling.
+  /// Use [DropdownSearchState.loadItems] to load or refresh explicitly.
+  final ItemsLoadMode itemsLoadMode;
+
+  /// Tracks recent usage and optionally builds popup shortcuts or auto-selects
+  /// a verified initial value after normal original-item loading.
+  /// Only available in single-selection mode; explicit selections take priority.
+  final SmartSelectionProps<T>? smartSelectionProps;
 
   ///called when a new item is selected
   final ValueChanged<T?>? onChanged;
@@ -186,6 +202,8 @@ class DropdownSearch<T> extends StatefulWidget {
     this.autoValidateMode = AutovalidateMode.disabled,
     this.onChanged,
     this.items,
+    this.itemsLoadMode = ItemsLoadMode.onOpen,
+    this.smartSelectionProps,
     this.dropdownBuilder,
     this.suffixProps = const DropdownSuffixProps(),
     this.clickProps = const ClickProps(),
@@ -201,6 +219,11 @@ class DropdownSearch<T> extends StatefulWidget {
     this.validator,
     DropDownDecoratorProps? decoratorProps,
   })  : assert(
+          itemsLoadMode == ItemsLoadMode.onOpen ||
+              popupProps.infiniteScrollProps == null,
+          'Cached item loading modes cannot use infiniteScrollProps',
+        ),
+        assert(
           T == String || T == int || T == double || compareFn != null,
           '`compareFn` is required',
         ),
@@ -230,6 +253,7 @@ class DropdownSearch<T> extends StatefulWidget {
     this.mode = Mode.form,
     this.autoValidateMode = AutovalidateMode.disabled,
     this.items,
+    this.itemsLoadMode = ItemsLoadMode.onOpen,
     this.suffixProps = const DropdownSuffixProps(),
     this.clickProps = const ClickProps(),
     this.enabled = true,
@@ -273,6 +297,7 @@ class DropdownSearch<T> extends StatefulWidget {
         onBeforeChange = null,
         onSaved = null,
         onChanged = null,
+        smartSelectionProps = null,
         onBeforePopupOpening = null;
 
   static List<T> _itemToList<T>(T? item) {
@@ -288,17 +313,253 @@ class DropdownSearchState<T> extends State<DropdownSearch<T>> {
   final ValueNotifier<List<T>> _selectedItemsNotifier = ValueNotifier([]);
   final ValueNotifier<bool> _isFocused = ValueNotifier(false);
   final _popupStateKey = GlobalKey<DropdownSearchPopupState<T>>();
+  late final ItemsLoader<T> _itemsLoader;
+  int _smartSelectionRevision = 0;
+  int _smartQueryRevision = 0;
+  int _smartHistoryRevision = 0;
+  int _lastSourceLoaderRevision = -1;
+  int _startupSmartCacheRevision = 0;
+  bool _smartAutoAttempted = false;
+  final _source = DropdownSource<T>();
+  final _suggestedItems = ValueNotifier<List<T>>([]);
+  late final ValueNotifier<SmartSelectionPresentation<T>> _smartPresentation;
+  StreamSubscription<String?>? _smartSubscription;
+
+  void _validateItemsLoadMode() {
+    if (widget.itemsLoadMode != ItemsLoadMode.onOpen &&
+        widget.popupProps.infiniteScrollProps != null) {
+      throw ArgumentError(
+        'Cached item loading modes cannot use infiniteScrollProps',
+      );
+    }
+  }
 
   @override
   void initState() {
     super.initState();
+    _itemsLoader = ItemsLoader<T>(
+      () =>
+          widget.items?.call(
+            '',
+            widget.itemsLoadMode == ItemsLoadMode.onOpen
+                ? widget.popupProps.infiniteScrollProps?.loadProps
+                : null,
+          ) ??
+          <T>[],
+      widget.itemsLoadMode,
+    );
+    _validateItemsLoadMode();
+    _itemsLoader.addListener(_onOwnerItemsLoaded);
+    _source.addListener(_onSourceChanged);
+    _smartPresentation = ValueNotifier(SmartSelectionPresentation<T>(
+        items: [], builder: widget.smartSelectionProps?.listBuilder));
+    final tag = widget.smartSelectionProps?.tag;
+    if (tag != null) {
+      _startupSmartCacheRevision = DropdownCacheStorage.smartRevision(tag);
+    }
+    _smartSubscription = DropdownCacheStorage.smartChanges.listen((tag) {
+      if (mounted && (tag == null || tag == widget.smartSelectionProps?.tag)) {
+        _smartHistoryRevision++;
+        _refreshSmartItems();
+      }
+    });
     _selectedItemsNotifier.value = List.from(widget.selectedItems);
+    _updateSuggestedItems();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _refreshSmartItems();
+    });
+  }
+
+  void _onOwnerItemsLoaded() {
+    final loader = _itemsLoader;
+    if (!mounted ||
+        loader.isLoading ||
+        !loader.hasLoaded ||
+        loader.error != null ||
+        loader.revision == _lastSourceLoaderRevision) {
+      return;
+    }
+    _lastSourceLoaderRevision = loader.revision;
+    final pagination = widget.popupProps.infiniteScrollProps?.loadProps;
+    final prefix = pagination == null ||
+        loader.mode != ItemsLoadMode.onOpen ||
+        pagination.skip == 0;
+    _source.publish(loader.items,
+        completePrefix: prefix,
+        complete: prefix &&
+            (pagination == null ||
+                loader.mode != ItemsLoadMode.onOpen ||
+                loader.items.length < pagination.take));
+  }
+
+  void _onSourceChanged() {
+    Future.microtask(() {
+      if (!mounted) return;
+      _refreshSmartItems();
+    });
+  }
+
+  void _updateSuggestedItems() {
+    final props = widget.popupProps.suggestedItemProps;
+    _suggestedItems.value = List<T>.unmodifiable(
+        props.showSuggestedItems ? props.suggestedItems : <T>[]);
+  }
+
+  bool _isDisabled(T item) =>
+      widget.popupProps.disabledItemFn?.call(item) == true;
+  bool _isSelectedItem(T item) =>
+      getSelectedItems.any((value) => _isEqual(value, item));
+
+  Future<void> _refreshSmartItems() async {
+    if (!mounted) return;
+    final query = ++_smartQueryRevision;
+    final sourceRevision = _source.revision;
+    final props = widget.smartSelectionProps;
+    if (props == null) {
+      _smartPresentation.value = SmartSelectionPresentation<T>(items: []);
+      return;
+    }
+    final canonical = <String, T>{};
+    var canPrune = _source.complete;
+    for (final item in _source.items) {
+      try {
+        canonical[props.itemToString(item)] = item;
+      } catch (_) {
+        canPrune = false;
+      }
+    }
+    final cacheRevision = DropdownCacheStorage.smartRevision(props.tag);
+    bool current() =>
+        mounted &&
+        query == _smartQueryRevision &&
+        sourceRevision == _source.revision &&
+        identical(widget.smartSelectionProps, props) &&
+        cacheRevision == DropdownCacheStorage.smartRevision(props.tag);
+    try {
+      final ranked = await SmartSelectionDatabase().ranked(
+          tag: props.tag,
+          usageRange: props.usageRange,
+          isCurrent: current,
+          validItems: canPrune ? canonical.keys.toSet() : null);
+      if (!current()) return;
+      final eligible = <SmartSelectionUsage>[];
+      final restored = <String, T>{};
+      var highestUnverifiedCount = 0;
+      for (final usage in ranked) {
+        if (!canonical.containsKey(usage.id)) {
+          if (usage.count > highestUnverifiedCount) {
+            highestUnverifiedCount = usage.count;
+          }
+          continue;
+        }
+        final item = canonical[usage.id] as T;
+        try {
+          if (!_isEqual(props.itemFromString(usage.id), item) ||
+              _isDisabled(item)) {
+            continue;
+          }
+          eligible.add(usage);
+          restored[usage.id] = item;
+        } catch (_) {
+          // A failed restoration cannot supply an actionable item.
+        }
+      }
+      _smartPresentation.value = SmartSelectionPresentation<T>(
+          items:
+              eligible.take(3).map((usage) => restored[usage.id] as T).toList(),
+          builder: props.listBuilder);
+      if (!props.autoSelect ||
+          _smartAutoAttempted ||
+          _smartSelectionRevision != 0 ||
+          getSelectedItems.isNotEmpty ||
+          !_source.hasData ||
+          _startupSmartCacheRevision != cacheRevision) {
+        return;
+      }
+      if (eligible.isEmpty) {
+        if (canPrune) _smartAutoAttempted = true;
+        return;
+      }
+      final leader = eligible.first;
+      // A partial page cannot disqualify a higher-ranked, unseen item.
+      if (highestUnverifiedCount >= leader.count) return;
+      _smartAutoAttempted = true;
+      if (eligible.length > 1 && eligible[1].count == leader.count) return;
+      final item = restored[leader.id] as T;
+      final revision = _smartSelectionRevision;
+      final historyRevision = _smartHistoryRevision;
+      final beforeChange = widget.onBeforeChange;
+      if (beforeChange != null &&
+          await beforeChange(getSelectedItem, item) != true) {
+        return;
+      }
+      if (mounted &&
+          identical(widget.smartSelectionProps, props) &&
+          historyRevision == _smartHistoryRevision &&
+          cacheRevision == DropdownCacheStorage.smartRevision(props.tag) &&
+          revision == _smartSelectionRevision &&
+          getSelectedItems.isEmpty &&
+          widget.smartSelectionProps?.autoSelect == true &&
+          _source.items.any((value) =>
+              _isEqual(value, item) &&
+              props.itemToString(value) == leader.id)) {
+        _commitSelectedItems([item]);
+      }
+    } catch (_) {
+      if (current()) {
+        _smartPresentation.value = SmartSelectionPresentation<T>(
+            items: [], builder: props.listBuilder);
+      }
+    }
+  }
+
+  void _recordSmartSelectionTap(T item) {
+    _smartSelectionRevision++;
+    final props = widget.smartSelectionProps;
+    if (props == null ||
+        !widget.enabled ||
+        widget.popupProps.disabledItemFn?.call(item) == true) {
+      return;
+    }
+    try {
+      SmartSelectionDatabase()
+          .recordClick(
+            tag: props.tag,
+            item: props.itemToString(item),
+          )
+          .catchError((Object _, StackTrace __) {});
+    } catch (_) {
+      // A transformer or unavailable store must not prevent the user's tap.
+    }
   }
 
   @override
   void didUpdateWidget(DropdownSearch<T> oldWidget) {
+    if (!identical(oldWidget.smartSelectionProps, widget.smartSelectionProps) ||
+        !listEquals(oldWidget.selectedItems, widget.selectedItems)) {
+      _smartSelectionRevision++;
+    }
+    _validateItemsLoadMode();
+    _updateSuggestedItems();
+    if (oldWidget.itemsLoadMode != widget.itemsLoadMode) {
+      _smartSelectionRevision++;
+      _lastSourceLoaderRevision = -1;
+      _source.reset();
+      _itemsLoader.reset(widget.itemsLoadMode);
+    }
     if (!listEquals(oldWidget.selectedItems, widget.selectedItems)) {
       _selectedItemsNotifier.value = List.from(widget.selectedItems);
+    }
+
+    if (!identical(oldWidget.smartSelectionProps, widget.smartSelectionProps) ||
+        oldWidget.enabled != widget.enabled ||
+        oldWidget.popupProps.disabledItemFn !=
+            widget.popupProps.disabledItemFn) {
+      Future.microtask(() {
+        if (mounted) {
+          _refreshSmartItems();
+        }
+      });
     }
 
     ///this code check if we need to refresh the popup widget to update
@@ -320,13 +581,101 @@ class DropdownSearchState<T> extends State<DropdownSearch<T>> {
       builder: (context, data, wt) {
         return IgnorePointer(
           ignoring: !widget.enabled,
-          child: CustomInkWell(
-            clickProps: widget.clickProps,
-            onTap: () => _selectSearchMode(),
-            child: _dropDown(),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              CustomInkWell(
+                clickProps: widget.clickProps,
+                onTap: () => _selectSearchMode(),
+                child: _dropDown(),
+              ),
+              ValueListenableBuilder<List<T>>(
+                  valueListenable: _suggestedItems,
+                  builder: (context, items, _) => _buildSuggestedItems(items)),
+            ],
           ),
         );
       },
+    );
+  }
+
+  void _handleFieldSuggestedTap(T item) {
+    if (!widget.enabled || _isDisabled(item)) return;
+    _recordSmartSelectionTap(item);
+    if (!widget.isMultiSelectionMode) {
+      _handleOnChangeSelectedItems([item]);
+    } else {
+      final next = List<T>.of(getSelectedItems);
+      if (_isSelectedItem(item)) {
+        next.removeWhere((value) => _isEqual(value, item));
+      } else {
+        next.add(item);
+      }
+      _handleOnChangeSelectedItems(next);
+    }
+  }
+
+  Widget _buildSuggestedItems(List<T> suggestedItems) {
+    if (suggestedItems.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 8),
+      child: LayoutBuilder(builder: (context, constraints) {
+        return CustomSingleScrollView(
+          scrollProps: widget.popupProps.suggestedItemProps.scrollProps,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minWidth: constraints.maxWidth),
+            child: Row(
+              mainAxisSize: MainAxisSize.max,
+              mainAxisAlignment:
+                  widget.popupProps.suggestedItemProps.suggestedItemsAlignment,
+              children: suggestedItems
+                  .map(
+                    (f) => CustomInkWell(
+                      clickProps:
+                          widget.popupProps.suggestedItemProps.itemClickProps,
+                      onTap: _isDisabled(f)
+                          ? null
+                          : () => _handleFieldSuggestedTap(f),
+                      child: widget.popupProps.suggestedItemProps
+                                  .suggestedItemBuilder !=
+                              null
+                          ? widget.popupProps.suggestedItemProps
+                                  .suggestedItemBuilder!(
+                              context, f, _isSelectedItem(f))
+                          : _suggestedItemDefaultWidget(f),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _suggestedItemDefaultWidget(T item) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      margin: EdgeInsets.only(left: 8),
+      decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          color: Theme.of(context).primaryColorLight),
+      child: Row(
+        children: [
+          Text(
+            _itemAsString(item),
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          Padding(padding: EdgeInsets.only(left: 8)),
+          Visibility(
+            child: Icon(Icons.check_box_outlined),
+            visible: _isSelectedItem(item),
+          )
+        ],
+      ),
     );
   }
 
@@ -673,13 +1022,15 @@ class DropdownSearchState<T> extends State<DropdownSearch<T>> {
   Future _openMenu() {
     // Here we get the render object of our physical button, later to get its size & position
     final dropdownObject = context.findRenderObject() as RenderBox;
-    final overlayState = Overlay.maybeOf(context) ?? Navigator.of(context).overlay;
+    final overlayState =
+        Overlay.maybeOf(context) ?? Navigator.of(context).overlay;
     if (overlayState == null) {
       throw FlutterError(
         'No Overlay widget found. To show a dropdown menu, there must be an Overlay widget in the widget tree.',
       );
     }
-    final RenderBox overlay = overlayState.context.findRenderObject() as RenderBox;
+    final RenderBox overlay =
+        overlayState.context.findRenderObject() as RenderBox;
 
     return showCustomMenu<T>(
       menuModeProps: widget.popupProps.menuProps,
@@ -691,16 +1042,29 @@ class DropdownSearchState<T> extends State<DropdownSearch<T>> {
   }
 
   Widget _popupWidgetInstance() {
-    return DropdownSearchPopup<T>(
-      key: _popupStateKey,
-      popupProps: widget.popupProps,
-      itemAsString: widget.itemAsString,
-      filterFn: widget.filterFn,
-      items: widget.items,
-      onChanged: _handleOnChangeSelectedItems,
-      compareFn: widget.compareFn,
-      isMultiSelectionMode: isMultiSelectionMode,
-      defaultSelectedItems: List.from(getSelectedItems),
+    return ItemsLoaderScope<T>(
+      loader: _itemsLoader,
+      source: _source,
+      smartSelection: _smartPresentation,
+      selectedItems: _selectedItemsNotifier,
+      suggestedItems: _suggestedItems,
+      isEnabled: () => mounted && widget.enabled,
+      canSelect: (item) => mounted && widget.enabled && !_isDisabled(item),
+      child: DropdownSearchPopup<T>(
+        key: _popupStateKey,
+        popupProps: widget.popupProps,
+        itemAsString: widget.itemAsString,
+        filterFn: widget.filterFn,
+        items: widget.items == null
+            ? null
+            : (filter, loadProps) =>
+                widget.items?.call(filter, loadProps) ?? <T>[],
+        onChanged: _handleOnChangeSelectedItems,
+        onItemTapped: _recordSmartSelectionTap,
+        compareFn: widget.compareFn,
+        isMultiSelectionMode: isMultiSelectionMode,
+        defaultSelectedItems: List.from(getSelectedItems),
+      ),
     );
   }
 
@@ -718,13 +1082,9 @@ class DropdownSearchState<T> extends State<DropdownSearch<T>> {
 
   ///handle on change value , if the validation is active , we validate the new selected item
   void _handleOnChangeSelectedItems(List<T> selectedItems) {
+    _smartSelectionRevision++;
     changeItem() {
-      _selectedItemsNotifier.value = List.from(selectedItems);
-      if (widget.onChanged != null) {
-        widget.onChanged!(getSelectedItem);
-      } else if (widget.onChangedMultiSelection != null) {
-        widget.onChangedMultiSelection!(selectedItems);
-      }
+      if (mounted) _commitSelectedItems(selectedItems);
     }
 
     if (widget.onBeforeChange != null) {
@@ -747,6 +1107,15 @@ class DropdownSearchState<T> extends State<DropdownSearch<T>> {
     }
 
     _handleFocus(false);
+  }
+
+  void _commitSelectedItems(List<T> selectedItems) {
+    _selectedItemsNotifier.value = List.from(selectedItems);
+    if (widget.onChanged != null) {
+      widget.onChanged!(getSelectedItem);
+    } else if (widget.onChangedMultiSelection != null) {
+      widget.onChangedMultiSelection!(selectedItems);
+    }
   }
 
   ///compared two items base on user params
@@ -793,7 +1162,21 @@ class DropdownSearchState<T> extends State<DropdownSearch<T>> {
 
   @override
   void dispose() {
-    _popupStateKey.currentState?.closePopup();
+    final popup = _popupStateKey.currentState;
+    if (popup != null) {
+      // The navigator may also be unmounting. Close a surviving popup only
+      // after the tree has finished updating, while its context is active.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (popup.mounted) popup.closePopup();
+      });
+    }
+    _smartSubscription?.cancel();
+    _itemsLoader.removeListener(_onOwnerItemsLoaded);
+    _source.removeListener(_onSourceChanged);
+    _source.dispose();
+    _smartPresentation.dispose();
+    _suggestedItems.dispose();
+    _itemsLoader.dispose();
     super.dispose();
   }
 
@@ -903,10 +1286,24 @@ class DropdownSearchState<T> extends State<DropdownSearch<T>> {
       _popupStateKey.currentState?.removePinnedItem(item);
 
   ///returns suggested items
-  List<T> get popupGetSuggestedItems =>
-      _popupStateKey.currentState?.suggestedItems ?? [];
+  List<T> get popupGetSuggestedItems => List<T>.of(_suggestedItems.value);
 
   void updatePopupState() => _popupStateKey.currentState?.setState(() {});
+
+  /// Loads or refreshes items, even when the popup is closed.
+  ///
+  /// Successful loads replace the internal list and refresh an open popup.
+  /// Requests use an empty filter; cached modes request a complete list without
+  /// pagination. Concurrent calls share the pending request. Errors propagate
+  /// to the caller and do not discard the last successful list.
+  /// In [ItemsLoadMode.onOpen], the next opening still loads normally.
+  Future<List<T>> loadItems() {
+    if (!mounted) {
+      return Future.error(StateError('The dropdown has been disposed'));
+    }
+    _validateItemsLoadMode();
+    return _itemsLoader.load();
+  }
 
   /// Retrieves the items programatically
   ///

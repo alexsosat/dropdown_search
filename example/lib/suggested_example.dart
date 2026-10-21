@@ -30,6 +30,10 @@ class _SuggestedExampleState extends State<SuggestedExample> {
                 autoSelectIfOnlyOneOnSearch: true,
               ),
               popupProps: PopupProps.modalBottomSheet(
+                suggestedItemProps: SuggestedItemProps(
+                  showSuggestedItems: true,
+                  suggestedItems: [1, 2, 3],
+                ),
                 showSearchBox: true,
                 cacheItems: true,
                 searchDelay: const Duration(seconds: 0),
@@ -45,6 +49,11 @@ class _SuggestedExampleState extends State<SuggestedExample> {
                 ),
               ),
             ),
+            Padding(
+                padding: EdgeInsets.all(12),
+                child: Text(
+                    'Suggested shortcuts are available immediately below the field, '
+                    'before loading the dropdown choices.')),
             DropdownSearch<String>(
               items: (filter, t) async {
                 await Future.delayed(Duration(seconds: 2));

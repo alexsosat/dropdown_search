@@ -133,11 +133,7 @@ class _BottomSheetExamplesPageState extends State<BottomSheetExamplesPage> {
                         itemBuilder: userModelBottomsheetPopupItem,
                         suggestedItemProps: SuggestedItemProps(
                           showSuggestedItems: true,
-                          suggestedItems: (us) {
-                            return us
-                                .where((e) => e.name.contains("Mrs"))
-                                .toList();
-                          },
+                          suggestedItems: UserModel.suggestedUsers,
                         ),
                       ),
                     ),
@@ -155,11 +151,7 @@ class _BottomSheetExamplesPageState extends State<BottomSheetExamplesPage> {
                         itemBuilder: userModelBottomsheetPopupItem,
                         suggestedItemProps: SuggestedItemProps(
                           showSuggestedItems: true,
-                          suggestedItems: (us) {
-                            return us
-                                .where((e) => e.name.contains("Mrs"))
-                                .toList();
-                          },
+                          suggestedItems: UserModel.suggestedUsers,
                           suggestedItemBuilder: (context, item, isSelected) {
                             return Container(
                               padding: EdgeInsets.symmetric(

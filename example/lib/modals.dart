@@ -125,11 +125,7 @@ class _ModalsExamplesPageState extends State<ModalsExamplesPage> {
                         itemBuilder: userModelPopupItem,
                         suggestedItemProps: SuggestedItemProps(
                           showSuggestedItems: true,
-                          suggestedItems: (us) {
-                            return us
-                                .where((e) => e.name.contains("Mrs"))
-                                .toList();
-                          },
+                          suggestedItems: UserModel.suggestedUsers,
                         ),
                       ),
                     ),
@@ -144,11 +140,7 @@ class _ModalsExamplesPageState extends State<ModalsExamplesPage> {
                         itemBuilder: userModelPopupItem,
                         suggestedItemProps: SuggestedItemProps(
                           showSuggestedItems: true,
-                          suggestedItems: (us) {
-                            return us
-                                .where((e) => e.name.contains("Mrs"))
-                                .toList();
-                          },
+                          suggestedItems: UserModel.suggestedUsers,
                           suggestedItemBuilder: (context, item, isSelected) {
                             return Container(
                               padding: EdgeInsets.symmetric(

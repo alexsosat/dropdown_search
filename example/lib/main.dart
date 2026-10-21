@@ -2,9 +2,12 @@ import 'package:dio/dio.dart';
 import 'package:dropdown_search/dropdown_search.dart';
 import 'package:example/bottom_sheets.dart';
 import 'package:example/dialogs.dart';
+import 'package:example/loading_methods.dart';
 import 'package:example/menus.dart';
+import 'package:example/pinned_items.dart';
 import 'package:example/modals.dart';
 import 'package:example/suggested_example.dart';
+import 'package:example/smart_selection.dart';
 import 'package:example/user_model.dart';
 import 'package:flutter/material.dart';
 
@@ -52,8 +55,16 @@ class MyHomePage extends StatelessWidget {
                 child: DropdownSearch<String>(
                   key: dropDownKey,
                   selectedItem: "Menu",
-                  items: (filter, infiniteScrollProps) =>
-                      ["Menu", "Dialog", "Modal", "BottomSheet", "Suggested"],
+                  items: (filter, infiniteScrollProps) => [
+                    "Menu",
+                    "Dialog",
+                    "Modal",
+                    "BottomSheet",
+                    "Suggested",
+                    "Smart selection",
+                    "Loading methods",
+                    "Pinned items"
+                  ],
                   decoratorProps: DropDownDecoratorProps(
                     decoration: InputDecoration(
                       labelText: 'Examples for: ',
@@ -97,6 +108,27 @@ class MyHomePage extends StatelessWidget {
                           context,
                           MaterialPageRoute(
                               builder: (context) => SuggestedExample()));
+                      break;
+                    case 'Smart selection':
+                      Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (context) =>
+                                  const SmartSelectionExamplePage()));
+                      break;
+                    case 'Pinned items':
+                      Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (context) =>
+                                  const PinnedItemsExamplePage()));
+                      break;
+                    case 'Loading methods':
+                      Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (context) =>
+                                  const LoadingMethodsExamplePage()));
                       break;
                   }
                 },

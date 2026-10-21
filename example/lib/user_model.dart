@@ -1,4 +1,14 @@
 class UserModel {
+  /// Explicit shortcuts that are available before remote choices load.
+  static final List<UserModel> suggestedUsers = List.unmodifiable([
+    UserModel(
+      id: 'suggested-user',
+      createdAt: DateTime.utc(2024),
+      name: 'Mrs Example',
+      avatar: '',
+    ),
+  ]);
+
   final String id;
   final DateTime createdAt;
   final String name;
